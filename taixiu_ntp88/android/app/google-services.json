@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "159588266332",
+    "project_id": "tai-xiu-ntp88",
+    "storage_bucket": "tai-xiu-ntp88.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:159588266332:android:5a99775473314751da1199",
+        "android_client_info": {
+          "package_name": "com.example.taixiu_ntp88"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3DBiew-bVpq4uhM25j6cis5TdIwtxjiI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
