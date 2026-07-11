@@ -126,19 +126,21 @@ class _WalletScreenState extends State<WalletScreen> {
       case 'withdraw': return 'Rút tiền';
       case 'bet_win': return 'Thắng cược';
       case 'bet_loss': return 'Thua cược';
+      case 'promo_bonus': return 'Thưởng nhiệm vụ';
+      case 'rebate': return 'Hoàn trả cược';
       default: return 'Giao dịch';
     }
   }
 
   Color _getTxColor(String type) {
-    if (type == 'deposit' || type == 'bet_win') {
+    if (type == 'deposit' || type == 'bet_win' || type == 'promo_bonus' || type == 'rebate') {
       return AppColors.success;
     }
     return AppColors.danger;
   }
 
   String _getTxSign(String type) {
-    if (type == 'deposit' || type == 'bet_win') {
+    if (type == 'deposit' || type == 'bet_win' || type == 'promo_bonus' || type == 'rebate') {
       return '+';
     }
     return '-';
@@ -149,6 +151,8 @@ class _WalletScreenState extends State<WalletScreen> {
       case 'deposit': return Icons.arrow_downward;
       case 'withdraw': return Icons.arrow_upward;
       case 'bet_win': return Icons.emoji_events;
+      case 'promo_bonus': return Icons.card_giftcard;
+      case 'rebate': return Icons.replay;
       default: return Icons.casino;
     }
   }
@@ -166,7 +170,12 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     final user = authService.currentUser;
-    final txList = authService.transactions;
+    final txList = authService.transactions.where((tx) => 
+      tx.type == 'deposit' || 
+      tx.type == 'withdraw' || 
+      tx.type == 'promo_bonus' || 
+      tx.type == 'rebate'
+    ).toList();
     final balance = user?.balance ?? 0.0;
 
     return Scaffold(
@@ -237,7 +246,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        "VIP ${user?.vipLevel ?? 1}",
+                        "VIP ${user?.vipLevel ?? 0}",
                         style: const TextStyle(
                           color: Colors.black87,
                           fontWeight: FontWeight.bold,

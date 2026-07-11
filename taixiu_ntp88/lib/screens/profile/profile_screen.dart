@@ -66,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildDetailRow("Số điện thoại:", user.phoneNumber),
               _buildDetailRow("Mã định danh ID:", user.idCode),
               _buildDetailRow("Cấp độ VIP:", "VIP ${user.vipLevel}"),
+              _buildDetailRow("Tổng nạp:", "${user.totalDeposited.toStringAsFixed(0)} COIN"),
               _buildDetailRow("Ảnh đại diện:", _getAvatarName(user.avatarUrl)),
               _buildDetailRow("Số dư tài khoản:", "${user.balance.toStringAsFixed(0)} COIN"),
               const SizedBox(height: 20),
@@ -570,7 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             border: Border.all(color: AppColors.goldHighlight, width: 1.5),
                           ),
                           child: Text(
-                            "VIP ${user?.vipLevel ?? 1}",
+                            "VIP ${user?.vipLevel ?? 0}",
                             style: const TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.bold,
@@ -602,6 +603,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: AppColors.textGrey,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  
+                  // Total deposited coins
+                  Text(
+                    "Tổng nạp: ${user?.totalDeposited.toStringAsFixed(0) ?? '0'} COIN",
+                    style: const TextStyle(
+                      color: AppColors.goldAccent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],

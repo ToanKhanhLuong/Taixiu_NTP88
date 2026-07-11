@@ -129,15 +129,47 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ? _betRepo.streamBetHistory(user.uid) 
                   : Stream.value(authService.bets),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.goldAccent,
-                    ),
-                  );
+                List<BetModel> allBets = [];
+                if (snapshot.hasData && snapshot.data != null) {
+                  allBets = List<BetModel>.from(snapshot.data!);
                 }
 
-                final List<BetModel> allBets = snapshot.data ?? [];
+                // Fallback: Nếu không tải được hoặc danh sách cược rỗng, tự động tái cấu trúc từ danh sách giao dịch cược (bet_win, bet_loss)
+                if (allBets.isEmpty) {
+                  final betTransactions = authService.transactions
+                      .where((tx) => tx.type == 'bet_win' || tx.type == 'bet_loss')
+                      .toList();
+                  if (betTransactions.isNotEmpty) {
+                    allBets = betTransactions.map((tx) {
+                      final bool isWin = tx.type == 'bet_win';
+                      return BetModel(
+                        id: tx.id,
+                        userId: tx.userId,
+                        gameType: 'Tai Xiu',
+                        detail: isWin ? 'Tài Xỉu VIP - Thắng' : 'Tài Xỉu VIP - Thua',
+                        choice: isWin ? 'Thắng cược' : 'Thua cược',
+                        amount: isWin ? tx.amount / 2 : tx.amount,
+                        winAmount: isWin ? tx.amount : 0.0,
+                        status: isWin ? 'win' : 'loss',
+                        resultString: isWin ? 'Thắng cược' : 'Thua cược',
+                        timestamp: tx.timestamp,
+                      );
+                    }).toList();
+                  }
+                }
+
+                if (allBets.isEmpty) {
+                  if (snapshot.hasError) {
+                    debugPrint("Firestore bet history error: ${snapshot.error}");
+                  }
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.goldAccent,
+                      ),
+                    );
+                  }
+                }
                 
                 // Sắp xếp lại lịch sử cược theo thời gian mới nhất (đảm bảo hiển thị đúng thứ tự)
                 allBets.sort((a, b) => b.timestamp.compareTo(a.timestamp));

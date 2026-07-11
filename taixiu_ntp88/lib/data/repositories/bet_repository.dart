@@ -24,7 +24,7 @@ class BetRepository {
           })
           .toList();
       list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      return list;
+      return list.take(100).toList();
     });
   }
 

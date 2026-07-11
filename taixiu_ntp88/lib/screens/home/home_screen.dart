@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/auth_service.dart';
+import '../../data/models/user_model.dart';
 import '../game/taixiu_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/history_screen.dart';
@@ -35,16 +36,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context);
+    final user = authService.currentUser;
+
     return Scaffold(
       body: IndexedStack(
         index: _currentTabIndex,
         children: _tabs,
       ),
-      bottomNavigationBar: _buildCustomBottomNavigationBar(),
+      bottomNavigationBar: _buildCustomBottomNavigationBar(user),
     );
   }
 
-  Widget _buildCustomBottomNavigationBar() {
+  Widget _buildCustomBottomNavigationBar(UserModel? user) {
+    bool hasUnclaimed = false;
+    if (user != null) {
+      hasUnclaimed = user.unclaimedFirstDepositBonus > 0 || 
+                     user.unclaimedVipLevelRewards > 0 || 
+                     user.unclaimedRebate > 0;
+    }
+
     return Container(
       height: 76,
       decoration: BoxDecoration(
@@ -64,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildNavBarItem(index: 1, icon: Icons.casino, label: "Trò chơi"),
           _buildNavBarItem(index: 2, icon: Icons.account_balance_wallet, label: "Ví tiền"),
           _buildNavBarItem(index: 3, icon: Icons.restore, label: "Lịch sử"),
-          _buildNavBarItem(index: 4, icon: Icons.card_giftcard, label: "Ưu đãi"),
+          _buildNavBarItem(index: 4, icon: Icons.card_giftcard, label: "Ưu đãi", showBadge: hasUnclaimed),
           _buildNavBarItem(index: 5, icon: Icons.person, label: "Cá nhân"),
         ],
       ),
@@ -75,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required int index,
     required IconData icon,
     required String label,
+    bool showBadge = false,
   }) {
     final bool isSelected = _currentTabIndex == index;
     
@@ -91,24 +103,42 @@ class _HomeScreenState extends State<HomeScreen> {
           color: isSelected ? AppColors.goldAccent : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.black : AppColors.textGrey,
-              size: 20,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? Colors.black : AppColors.textGrey,
+                  size: 20,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.black : AppColors.textGrey,
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.black : AppColors.textGrey,
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            if (showBadge)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),

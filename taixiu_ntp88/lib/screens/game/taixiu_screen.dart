@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/bet_model.dart';
 import '../../services/auth_service.dart';
+import '../../data/repositories/chat_repository.dart';
+import '../../services/database/firebase_service.dart';
 
 class TaiXiuScreen extends StatefulWidget {
   const TaiXiuScreen({super.key});
@@ -24,6 +26,9 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
   
   // Bead History (Lịch sử cầu): true = Tài (Đen/Xám), false = Xỉu (Trắng)
   final List<bool> _beadHistory = [];
+  
+  // Session History: contains list of { sessionId, dices, total, isTai }
+  final List<Map<String, dynamic>> _sessionHistory = [];
 
   // Chip & Bet System
   int _selectedChip = 10;
@@ -58,6 +63,14 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
 
   String _lastResultText = "";
 
+  // Chat real-time system variables
+  bool _showChat = false;
+  final ChatRepository _chatRepo = ChatRepository();
+  List<ChatMessage> _chatMessages = [];
+  StreamSubscription<List<ChatMessage>>? _chatSub;
+  final TextEditingController _chatController = TextEditingController();
+  final ScrollController _chatScrollController = ScrollController();
+
   // Animation controller for dice shaking
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -77,12 +90,16 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     ).animate(_shakeController);
 
     _startGlobalClockSync();
+    _initChatSync();
   }
 
   @override
   void dispose() {
     _gameTimer?.cancel();
     _shakeController.dispose();
+    _chatSub?.cancel();
+    _chatController.dispose();
+    _chatScrollController.dispose();
     super.dispose();
   }
 
@@ -185,15 +202,37 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
       baseXiuPlayers += 18;
     }
 
-    // Sinh lịch sử cầu (Bead History) 15 ván trước đồng bộ từ ID phiên cũ
-    _beadHistory.clear();
-    for (int i = 15; i >= 1; i--) {
+    // Sinh lịch sử cầu (Bead History) 120 ván trước đồng bộ từ ID phiên cũ
+    _sessionHistory.clear();
+    for (int i = 120; i >= 1; i--) {
       final int pastSession = currentSessionId - i;
       final math_random.Random r = math_random.Random(pastSession);
       final int pd1 = r.nextInt(6) + 1;
       final int pd2 = r.nextInt(6) + 1;
       final int pd3 = r.nextInt(6) + 1;
-      _beadHistory.add((pd1 + pd2 + pd3) >= 11);
+      final int total = pd1 + pd2 + pd3;
+      _sessionHistory.add({
+        'sessionId': pastSession,
+        'dices': [pd1, pd2, pd3],
+        'total': total,
+        'isTai': total >= 11,
+      });
+    }
+
+    if (calculatedState == "RESULT") {
+      _sessionHistory.add({
+        'sessionId': currentSessionId,
+        'dices': currentDiceResult,
+        'total': total,
+        'isTai': isTai,
+      });
+    }
+
+    // Đồng bộ lại bead history ở màn hình chính (15 ván gần nhất)
+    _beadHistory.clear();
+    final int historyStart = _sessionHistory.length >= 15 ? _sessionHistory.length - 15 : 0;
+    for (int i = historyStart; i < _sessionHistory.length; i++) {
+      _beadHistory.add(_sessionHistory[i]['isTai']);
     }
 
     // Chỉ tự động đánh giá thắng/thua khi đĩa KHÔNG bị che
@@ -702,6 +741,258 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     );
   }
 
+  void _showHistoryRoadDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: _buildHistoryRoadWidget(),
+        );
+      },
+    );
+  }
+
+  Widget _buildHistoryRoadWidget() {
+    // Calculate stats
+    int taiCount = _sessionHistory.where((e) => e['isTai'] == true).length;
+    int xiuCount = _sessionHistory.length - taiCount;
+
+    // Calculate Main Road columns (max 20 columns, 6 rows)
+    final List<List<int>> mainRoadColumns = calculateMainRoad(_sessionHistory, 20, 6);
+
+    const double cellSize = 24.0;
+    const int rowsCount = 6;
+    const int colsCount = 20;
+    const double boardWidth = colsCount * cellSize;
+    const double boardHeight = rowsCount * cellSize;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF231A11), // Premium brown
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.goldAccent,
+          width: 2,
+        ),
+        boxShadow: const [
+          BoxShadow(color: Colors.black87, blurRadius: 15, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const SizedBox(width: 32),
+              const Text(
+                "LỊCH SỬ PHIÊN",
+                style: TextStyle(
+                  color: AppColors.goldAccent,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: AppColors.goldLight),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Statistics chips
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1610),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.goldAccent, width: 1),
+                ),
+                child: Text(
+                  "Tài: $taiCount",
+                  style: const TextStyle(
+                    color: AppColors.goldAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white54, width: 1),
+                ),
+                child: Text(
+                  "Xỉu: $xiuCount",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Single scroll view wrapping both grids
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Bead Road
+                  Container(
+                    width: boardWidth,
+                    height: boardHeight,
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: CustomPaint(
+                      size: const Size(boardWidth, boardHeight),
+                      painter: BeadRoadPainter(
+                        history: _sessionHistory,
+                        rows: rowsCount,
+                        cols: colsCount,
+                        cellSize: cellSize,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Bottom Main Road
+                  _buildMainRoadGrid(mainRoadColumns, cellSize, colsCount, rowsCount),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  // Streak calculation algorithm
+  List<List<int>> calculateMainRoad(List<Map<String, dynamic>> history, int maxCols, int maxRows) {
+    List<List<int>> columns = [];
+    List<int> currentCol = [];
+    bool? currentSide;
+    
+    for (var round in history) {
+      bool isTai = round['isTai'];
+      int score = round['total'];
+      
+      if (currentSide == null) {
+        currentSide = isTai;
+        currentCol.add(score);
+      } else if (currentSide == isTai) {
+        if (currentCol.length < maxRows) {
+          currentCol.add(score);
+        } else {
+          columns.add(currentCol);
+          currentCol = [score];
+        }
+      } else {
+        columns.add(currentCol);
+        currentCol = [score];
+        currentSide = isTai;
+      }
+    }
+    if (currentCol.isNotEmpty) {
+      columns.add(currentCol);
+    }
+    
+    if (columns.length > maxCols) {
+      columns = columns.sublist(columns.length - maxCols);
+    }
+    return columns;
+  }
+
+  Widget _buildMainRoadGrid(List<List<int>> columns, double cellSize, int maxCols, int maxRows) {
+    List<Widget> columnWidgets = [];
+    
+    for (int c = 0; c < maxCols; c++) {
+      List<int> colData = c < columns.length ? columns[c] : [];
+      List<Widget> cellWidgets = [];
+      
+      for (int r = 0; r < maxRows; r++) {
+        Widget cellContent = const SizedBox.shrink();
+        
+        if (r < colData.length) {
+          int score = colData[r];
+          bool isTai = score >= 11;
+          
+          cellContent = Container(
+            width: cellSize * 0.82,
+            height: cellSize * 0.82,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isTai ? const Color(0xFFC59F3F) : Colors.white, // Gold for Tài, White for Xỉu
+              border: Border.all(
+                color: isTai ? const Color(0xFFFFD700) : const Color(0xFF888888),
+                width: 1.5,
+              ),
+              boxShadow: const [
+                BoxShadow(color: Colors.black45, blurRadius: 1.5, offset: Offset(0.5, 0.5)),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                "$score",
+                style: TextStyle(
+                  color: isTai ? Colors.white : Colors.black87,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          );
+        }
+        
+        cellWidgets.add(
+          Container(
+            width: cellSize,
+            height: cellSize,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: AppColors.borderGrey.withOpacity(0.2),
+                width: 0.5,
+              ),
+            ),
+            child: Center(child: cellContent),
+          ),
+        );
+      }
+      
+      columnWidgets.add(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: cellWidgets,
+        ),
+      );
+    }
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: columnWidgets,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
@@ -739,18 +1030,29 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
         actions: [
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline, color: AppColors.goldLight, size: 20),
-            onPressed: () {},
+            onPressed: () {
+              setState(() {
+                _showChat = !_showChat;
+              });
+              if (_showChat) {
+                _scrollToBottom();
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.close, color: AppColors.goldLight, size: 20),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: Column(
-          children: [
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Column(
+              children: [
             // Ví tiền của người chơi
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -802,7 +1104,7 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
                     children: [
                       IconButton(
                         icon: const Icon(Icons.show_chart, color: AppColors.goldLight),
-                        onPressed: () {},
+                        onPressed: _showHistoryRoadDialog,
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1135,9 +1437,9 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
                           height: 14,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isTai ? const Color(0xFF424242) : Colors.white,
+                            color: isTai ? AppColors.goldAccent : Colors.white,
                             border: Border.all(
-                              color: isTai ? Colors.white24 : Colors.grey,
+                              color: isTai ? AppColors.goldAccent.withOpacity(0.5) : Colors.grey,
                               width: 1,
                             ),
                           ),
@@ -1271,6 +1573,459 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
           ],
         ),
       ),
+      if (_showChat)
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: MediaQuery.of(context).size.width * 0.78,
+          child: _buildChatOverlayPanel(authService),
+        ),
+    ],
+  ),
+);
+}
+
+  void _initChatSync() {
+    if (FirebaseService.isInitialized) {
+      _chatSub = _chatRepo.streamMessages().listen((msgs) {
+        if (mounted) {
+          setState(() {
+            _chatMessages = msgs;
+          });
+          _scrollToBottom();
+        }
+      }, onError: (e) {
+        debugPrint("Error listening to game chat: $e");
+      });
+    } else {
+      _chatMessages = _generateMockChats();
+    }
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_chatScrollController.hasClients) {
+        _chatScrollController.animateTo(
+          _chatScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  List<ChatMessage> _generateMockChats() {
+    return [
+      ChatMessage(
+        id: 'mock_1',
+        userId: '1',
+        username: 'hoang_tuan',
+        vipLevel: 3,
+        message: 'Kèo này Xỉu chắc rồi anh em ơi!',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
+      ),
+      ChatMessage(
+        id: 'mock_2',
+        userId: '2',
+        username: 'minh_quan99',
+        vipLevel: 1,
+        message: 'Tôi bắt Tài, theo tôi ăn chắc!',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 4)),
+      ),
+      ChatMessage(
+        id: 'mock_3',
+        userId: '3',
+        username: 'kieu_anh_vip',
+        vipLevel: 5,
+        message: 'Cầu đang bệt Tài đẹp quá.',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 3)),
+      ),
+      ChatMessage(
+        id: 'mock_4',
+        userId: '4',
+        username: 'toanlk04',
+        vipLevel: 2,
+        message: 'Vừa ăn được 200 COIN sướng ghê.',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 2)),
+      ),
+      ChatMessage(
+        id: 'mock_5',
+        userId: '5',
+        username: 'casino_king',
+        vipLevel: 6,
+        message: 'Chuẩn bị nặn bát thôi!',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 1)),
+      ),
+    ];
+  }
+
+  Future<void> _handleSendMessage(AuthService authService) async {
+    final user = authService.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Vui lòng đăng nhập để gửi tin nhắn chat."),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    final text = _chatController.text.trim();
+    if (text.isEmpty) return;
+
+    _chatController.clear();
+
+    if (FirebaseService.isInitialized) {
+      try {
+        await _chatRepo.sendMessage(
+          userId: user.uid,
+          username: user.username,
+          vipLevel: user.vipLevel,
+          message: text,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Không thể gửi tin nhắn: $e"), backgroundColor: AppColors.danger),
+          );
+        }
+      }
+    } else {
+      // Mock sending
+      final newMsg = ChatMessage(
+        id: 'mock_${DateTime.now().millisecondsSinceEpoch}',
+        userId: user.uid,
+        username: user.username,
+        vipLevel: user.vipLevel,
+        message: text,
+        timestamp: DateTime.now(),
+      );
+      setState(() {
+        _chatMessages.add(newMsg);
+        if (_chatMessages.length > 30) {
+          _chatMessages.removeAt(0);
+        }
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Widget _buildChatOverlayPanel(AuthService authService) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardDark.withOpacity(0.95),
+        border: const Border(
+          left: BorderSide(color: AppColors.borderGrey, width: 1),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              border: Border(
+                bottom: BorderSide(color: AppColors.borderGrey.withOpacity(0.5)),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.chat_bubble, color: AppColors.goldAccent, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      "TRÒ CHUYỆN",
+                      style: TextStyle(
+                        color: AppColors.goldAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                  onPressed: () {
+                    setState(() {
+                      _showChat = false;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          // Messages list
+          Expanded(
+            child: _chatMessages.isEmpty
+                ? const Center(
+                    child: Text(
+                      "Chưa có tin nhắn nào...",
+                      style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _chatScrollController,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _chatMessages.length,
+                    itemBuilder: (context, index) {
+                      final msg = _chatMessages[index];
+                      final bool isMe = authService.currentUser?.uid == msg.userId;
+                      return _buildChatMessageItem(msg, isMe);
+                    },
+                  ),
+          ),
+          
+          // Input
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              border: Border(
+                top: BorderSide(color: AppColors.borderGrey.withOpacity(0.5)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _chatController,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: "Nhập tin nhắn...",
+                      hintStyle: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      filled: true,
+                      fillColor: Colors.black45,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onSubmitted: (_) => _handleSendMessage(authService),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  backgroundColor: AppColors.goldAccent,
+                  radius: 18,
+                  child: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.black, size: 16),
+                    onPressed: () => _handleSendMessage(authService),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
+
+  Widget _buildChatMessageItem(ChatMessage msg, bool isMe) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isMe) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.goldGradient,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    "VIP ${msg.vipLevel}",
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 9,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  msg.username,
+                  style: TextStyle(
+                    color: isMe ? AppColors.goldLight : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  "Bạn",
+                  style: const TextStyle(
+                    color: AppColors.goldAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.goldGradient,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    "VIP ${msg.vipLevel}",
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 9,
+                    ),
+                  ),
+                ),
+              ]
+            ],
+          ),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isMe ? AppColors.goldAccent.withOpacity(0.15) : Colors.white12,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(12),
+                topRight: const Radius.circular(12),
+                bottomLeft: Radius.circular(isMe ? 12 : 0),
+                bottomRight: Radius.circular(isMe ? 0 : 12),
+              ),
+              border: Border.all(
+                color: isMe ? AppColors.goldAccent.withOpacity(0.5) : AppColors.borderGrey.withOpacity(0.3),
+                width: 0.5,
+              ),
+            ),
+            child: Text(
+              msg.message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BeadRoadPainter extends CustomPainter {
+  final List<Map<String, dynamic>> history;
+  final int rows;
+  final int cols;
+  final double cellSize;
+
+  BeadRoadPainter({
+    required this.history,
+    this.rows = 6,
+    this.cols = 20,
+    this.cellSize = 24.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint linePaint = Paint()
+      ..color = AppColors.goldAccent.withOpacity(0.5)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    final Paint cellBorderPaint = Paint()
+      ..color = AppColors.borderGrey.withOpacity(0.2)
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+
+    // Draw background grid lines (horizontal and vertical)
+    for (int r = 0; r <= rows; r++) {
+      canvas.drawLine(
+        Offset(0, r * cellSize),
+        Offset(cols * cellSize, r * cellSize),
+        cellBorderPaint,
+      );
+    }
+    for (int c = 0; c <= cols; c++) {
+      canvas.drawLine(
+        Offset(c * cellSize, 0),
+        Offset(c * cellSize, rows * cellSize),
+        cellBorderPaint,
+      );
+    }
+
+    final int maxCells = rows * cols;
+    final List<Map<String, dynamic>> items = history.length > maxCells
+        ? history.sublist(history.length - maxCells)
+        : history;
+
+    // Pre-calculate positions to draw connection lines
+    final List<Offset> centers = [];
+    for (int i = 0; i < items.length; i++) {
+      final BeadPoint p = getSnakingCoords(i, rows);
+      final double centerX = p.col * cellSize + cellSize / 2;
+      final double centerY = p.row * cellSize + cellSize / 2;
+      centers.add(Offset(centerX, centerY));
+    }
+
+    // Draw connection lines
+    if (centers.length > 1) {
+      final Path path = Path();
+      path.moveTo(centers[0].dx, centers[0].dy);
+      for (int i = 1; i < centers.length; i++) {
+        path.lineTo(centers[i].dx, centers[i].dy);
+      }
+      canvas.drawPath(path, linePaint);
+    }
+
+    // Draw circles
+    for (int i = 0; i < items.length; i++) {
+      final Offset center = centers[i];
+      final bool isTai = items[i]['isTai'];
+
+      final Paint circlePaint = Paint()
+        ..style = PaintingStyle.fill;
+      final Paint borderPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+
+      if (isTai) {
+        // Tài: Dark grey background, white border
+        circlePaint.color = const Color(0xFF1E1E1E);
+        borderPaint.color = Colors.white;
+      } else {
+        // Xỉu: White background, black border
+        circlePaint.color = Colors.white;
+        borderPaint.color = const Color(0xFF555555);
+      }
+
+      canvas.drawCircle(center, cellSize * 0.38, circlePaint);
+      canvas.drawCircle(center, cellSize * 0.38, borderPaint);
+    }
+  }
+
+  BeadPoint getSnakingCoords(int index, int rows) {
+    int col = index ~/ rows;
+    int rowInCol = index % rows;
+    int row = (col % 2 == 0) ? rowInCol : (rows - 1 - rowInCol);
+    return BeadPoint(col, row);
+  }
+
+  @override
+  bool shouldRepaint(covariant BeadRoadPainter oldDelegate) {
+    return oldDelegate.history != history;
+  }
+}
+
+class BeadPoint {
+  final int col;
+  final int row;
+  BeadPoint(this.col, this.row);
 }

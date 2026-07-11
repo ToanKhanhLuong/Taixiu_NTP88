@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -63,16 +64,26 @@ class AuthService with ChangeNotifier {
         _cancelSubscriptions();
         if (firebaseUser != null) {
           // Lắng nghe thông tin người dùng & số dư thay đổi real-time từ UserRepository
-          _userSub = _userRepo.streamUser(firebaseUser.uid).listen((user) {
-            _currentUser = user;
-            notifyListeners();
-          });
+          _userSub = _userRepo.streamUser(firebaseUser.uid).listen(
+            (user) {
+              _currentUser = user;
+              notifyListeners();
+            },
+            onError: (e) {
+              debugPrint("Error listening to user profile: $e");
+            },
+          );
           
           // Lắng nghe lịch sử cược real-time từ BetRepository
-          _betsSub = _betRepo.streamBetHistory(firebaseUser.uid).listen((betsList) {
-            _bets = betsList;
-            notifyListeners();
-          });
+          _betsSub = _betRepo.streamBetHistory(firebaseUser.uid).listen(
+            (betsList) {
+              _bets = betsList;
+              notifyListeners();
+            },
+            onError: (e) {
+              debugPrint("Error listening to bet history: $e");
+            },
+          );
 
           // Lắng nghe lịch sử giao dịch real-time
           _listenToTransactions(firebaseUser.uid);
@@ -95,7 +106,8 @@ class AuthService with ChangeNotifier {
       username: 'toanlk04',
       email: 'toanlk04@gmail.com',
       phoneNumber: '0337868199',
-      balance: 6870.0,
+      balance: 3010.0,
+      totalDeposited: 4100.0,
       vipLevel: 1,
       avatarUrl: 'assets/images/dragon_avatar.png',
       idCode: '621099131',
@@ -109,17 +121,33 @@ class AuthService with ChangeNotifier {
         id: 'tx_1',
         userId: mockUser.uid,
         type: 'deposit',
-        amount: 5000.0,
+        amount: 2000.0,
         status: 'completed',
         timestamp: DateTime.now().subtract(const Duration(days: 2)),
       ),
       TransactionModel(
         id: 'tx_2',
         userId: mockUser.uid,
-        type: 'withdraw',
-        amount: 200.0,
+        type: 'deposit',
+        amount: 100.0,
         status: 'completed',
-        timestamp: DateTime.now().subtract(const Duration(days: 1)),
+        timestamp: DateTime.now().subtract(const Duration(days: 1, hours: 5)),
+      ),
+      TransactionModel(
+        id: 'tx_3',
+        userId: mockUser.uid,
+        type: 'deposit',
+        amount: 2000.0,
+        status: 'completed',
+        timestamp: DateTime.now().subtract(const Duration(hours: 23)),
+      ),
+      TransactionModel(
+        id: 'tx_4',
+        userId: mockUser.uid,
+        type: 'withdraw',
+        amount: 1090.0,
+        status: 'completed',
+        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
       ),
     ]);
 
@@ -162,8 +190,10 @@ class AuthService with ChangeNotifier {
           .map((doc) => TransactionModel.fromMap(doc.data()))
           .toList();
       txList.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      _transactions = txList;
+      _transactions = txList.take(100).toList();
       notifyListeners();
+    }, onError: (e) {
+      debugPrint("Error listening to transactions: $e");
     });
   }
 
@@ -279,7 +309,8 @@ class AuthService with ChangeNotifier {
           email: email,
           phoneNumber: phoneNumber,
           balance: 1000.0, // Mỗi tài khoản mới nhận được 1000 COIN
-          vipLevel: 1,
+          totalDeposited: 0.0,
+          vipLevel: 0,
           avatarUrl: 'assets/images/dragon_avatar.png',
           idCode: idCode,
         );
@@ -309,7 +340,8 @@ class AuthService with ChangeNotifier {
           email: email,
           phoneNumber: phoneNumber,
           balance: 1000.0, // Nhận 1000 COIN cho tài khoản Mock
-          vipLevel: 1,
+          totalDeposited: 0.0,
+          vipLevel: 0,
           avatarUrl: 'assets/images/dragon_avatar.png',
           idCode: idCode,
         );
@@ -347,16 +379,30 @@ class AuthService with ChangeNotifier {
   Future<void> deposit(double amount) async {
     if (_currentUser == null) return;
     
+    // Calculate locally what will happen to write corresponding transaction logs
+    final double currentTotalDeposited = _currentUser!.totalDeposited;
+    final int currentVip = _currentUser!.vipLevel;
+    final double newTotalDeposited = currentTotalDeposited + amount;
+    final int newVipLevel = UserModel.calculateVipLevel(newTotalDeposited);
+
+    bool isFirstDeposit = currentTotalDeposited == 0.0 && amount >= 50.0;
+    double vipReward = 0.0;
+    for (int v = currentVip + 1; v <= newVipLevel; v++) {
+      if (v >= 1 && v <= 6) {
+        vipReward += 50 * math.pow(2, v - 1);
+      }
+    }
+
     if (isFirebaseActive) {
       // 1. Cập nhật số dư trước (critical)
       try {
-        await _userRepo.updateBalanceAtomic(_currentUser!.uid, amount);
+        await _userRepo.recordDepositAtomic(_currentUser!.uid, amount);
       } catch (e) {
         debugPrint("CRITICAL ERROR: Failed to update balance in deposit: $e");
         rethrow;
       }
 
-      // 2. Ghi nhật ký giao dịch (phụ) - không chặn cập nhật số dư
+      // 2. Ghi nhật ký giao dịch nạp tiền chính
       try {
         final txRef = _firestore.collection('transactions').doc();
         final tx = TransactionModel(
@@ -373,9 +419,14 @@ class AuthService with ChangeNotifier {
       }
     } else {
       // Mock Deposit
+      double promoBonus = isFirstDeposit ? 40.0 : 0.0;
       final newBalance = _currentUser!.balance + amount;
+      final newUnclaimedFirstDeposit = _currentUser!.unclaimedFirstDepositBonus + promoBonus;
+      final newUnclaimedVipRewards = _currentUser!.unclaimedVipLevelRewards + vipReward;
+
+      // Log main deposit
       final tx = TransactionModel(
-        id: 'tx_mock_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'tx_mock_dep_${DateTime.now().millisecondsSinceEpoch}',
         userId: _currentUser!.uid,
         type: 'deposit',
         amount: amount,
@@ -384,7 +435,13 @@ class AuthService with ChangeNotifier {
       );
       _mockTransactions.add(tx);
       _transactions.insert(0, tx);
-      _currentUser = _currentUser!.copyWith(balance: newBalance);
+
+      _currentUser = _currentUser!.copyWith(
+        balance: newBalance,
+        totalDeposited: newTotalDeposited,
+        unclaimedFirstDepositBonus: newUnclaimedFirstDeposit,
+        unclaimedVipLevelRewards: newUnclaimedVipRewards,
+      );
       notifyListeners();
     }
   }
@@ -436,17 +493,33 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  double getRebatePercentage(int vipLevel) {
+    switch (vipLevel) {
+      case 0: return 0.002; // 0.2%
+      case 1: return 0.005; // 0.5%
+      case 2: return 0.010; // 1.0%
+      case 3: return 0.015; // 1.5%
+      case 4: return 0.020; // 2.0%
+      case 5: return 0.025; // 2.5%
+      case 6: return 0.030; // 3.0%
+      default: return 0.002;
+    }
+  }
+
   Future<void> placeBet(BetModel bet) async {
     if (_currentUser == null) return;
     
+    final int currentVip = _currentUser!.vipLevel;
+    final double rebatePercentage = getRebatePercentage(currentVip);
+    final double rebateAmount = bet.amount * rebatePercentage;
+
     // Cược thắng sẽ được + (winAmount - amount) vào ví, cược thua bị trừ (amount)
-    // Tổng số lượng thay đổi số dư thực tế:
     final double netChange = -bet.amount + bet.winAmount;
 
     if (isFirebaseActive) {
-      // 1. Cập nhật số dư trước (critical)
+      // 1. Cập nhật số dư và hoàn trả (critical)
       try {
-        await _userRepo.updateBalanceAtomic(_currentUser!.uid, netChange);
+        await _userRepo.updateBalanceAndRebateAtomic(_currentUser!.uid, netChange, rebateAmount);
       } catch (e) {
         debugPrint("CRITICAL ERROR: Failed to update balance in placeBet: $e");
         rethrow;
@@ -477,6 +550,7 @@ class AuthService with ChangeNotifier {
     } else {
       // Mock Bet
       final newBalance = _currentUser!.balance + netChange;
+      final newUnclaimedRebate = _currentUser!.unclaimedRebate + rebateAmount;
       final completeBet = BetModel(
         id: 'bet_mock_${DateTime.now().millisecondsSinceEpoch}',
         userId: bet.userId,
@@ -504,7 +578,143 @@ class AuthService with ChangeNotifier {
       _mockTransactions.add(tx);
       _transactions.insert(0, tx);
       
-      _currentUser = _currentUser!.copyWith(balance: newBalance);
+      _currentUser = _currentUser!.copyWith(
+        balance: newBalance,
+        unclaimedRebate: newUnclaimedRebate,
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> claimFirstDepositBonus() async {
+    if (_currentUser == null) return;
+    final double unclaimed = _currentUser!.unclaimedFirstDepositBonus;
+    if (unclaimed <= 0) return;
+
+    if (isFirebaseActive) {
+      try {
+        await _userRepo.claimFirstDepositBonus(_currentUser!.uid);
+        
+        // Log transaction record for the claim
+        final txRef = _firestore.collection('transactions').doc();
+        final tx = TransactionModel(
+          id: txRef.id,
+          userId: _currentUser!.uid,
+          type: 'promo_bonus',
+          amount: unclaimed,
+          status: 'completed',
+          timestamp: DateTime.now(),
+        );
+        await _firestore.collection('transactions').doc(txRef.id).set(tx.toMap());
+      } catch (e) {
+        debugPrint("Error claiming first deposit bonus: $e");
+        rethrow;
+      }
+    } else {
+      // Mock Claim
+      final newBalance = _currentUser!.balance + unclaimed;
+      final tx = TransactionModel(
+        id: 'tx_mock_claim_fd_${DateTime.now().millisecondsSinceEpoch}',
+        userId: _currentUser!.uid,
+        type: 'promo_bonus',
+        amount: unclaimed,
+        status: 'completed',
+        timestamp: DateTime.now(),
+      );
+      _mockTransactions.add(tx);
+      _transactions.insert(0, tx);
+      _currentUser = _currentUser!.copyWith(
+        balance: newBalance,
+        unclaimedFirstDepositBonus: 0.0,
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> claimVipLevelRewards() async {
+    if (_currentUser == null) return;
+    final double unclaimed = _currentUser!.unclaimedVipLevelRewards;
+    if (unclaimed <= 0) return;
+
+    if (isFirebaseActive) {
+      try {
+        await _userRepo.claimVipLevelRewards(_currentUser!.uid);
+        
+        final txRef = _firestore.collection('transactions').doc();
+        final tx = TransactionModel(
+          id: txRef.id,
+          userId: _currentUser!.uid,
+          type: 'promo_bonus',
+          amount: unclaimed,
+          status: 'completed',
+          timestamp: DateTime.now(),
+        );
+        await _firestore.collection('transactions').doc(txRef.id).set(tx.toMap());
+      } catch (e) {
+        debugPrint("Error claiming VIP level rewards: $e");
+        rethrow;
+      }
+    } else {
+      // Mock Claim
+      final newBalance = _currentUser!.balance + unclaimed;
+      final tx = TransactionModel(
+        id: 'tx_mock_claim_vip_${DateTime.now().millisecondsSinceEpoch}',
+        userId: _currentUser!.uid,
+        type: 'promo_bonus',
+        amount: unclaimed,
+        status: 'completed',
+        timestamp: DateTime.now(),
+      );
+      _mockTransactions.add(tx);
+      _transactions.insert(0, tx);
+      _currentUser = _currentUser!.copyWith(
+        balance: newBalance,
+        unclaimedVipLevelRewards: 0.0,
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> claimRebate() async {
+    if (_currentUser == null) return;
+    final double unclaimed = _currentUser!.unclaimedRebate;
+    if (unclaimed <= 0) return;
+
+    if (isFirebaseActive) {
+      try {
+        await _userRepo.claimRebate(_currentUser!.uid);
+        
+        final txRef = _firestore.collection('transactions').doc();
+        final tx = TransactionModel(
+          id: txRef.id,
+          userId: _currentUser!.uid,
+          type: 'rebate',
+          amount: unclaimed,
+          status: 'completed',
+          timestamp: DateTime.now(),
+        );
+        await _firestore.collection('transactions').doc(txRef.id).set(tx.toMap());
+      } catch (e) {
+        debugPrint("Error claiming rebate: $e");
+        rethrow;
+      }
+    } else {
+      // Mock Claim
+      final newBalance = _currentUser!.balance + unclaimed;
+      final tx = TransactionModel(
+        id: 'tx_mock_claim_rebate_${DateTime.now().millisecondsSinceEpoch}',
+        userId: _currentUser!.uid,
+        type: 'rebate',
+        amount: unclaimed,
+        status: 'completed',
+        timestamp: DateTime.now(),
+      );
+      _mockTransactions.add(tx);
+      _transactions.insert(0, tx);
+      _currentUser = _currentUser!.copyWith(
+        balance: newBalance,
+        unclaimedRebate: 0.0,
+      );
       notifyListeners();
     }
   }
