@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math_random;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/models/bet_model.dart';
 import '../../services/auth_service.dart';
@@ -75,6 +76,15 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
 
+  // Admin Override settings
+  int? _overrideSessionId;
+  List<int>? _overrideDices;
+  String? _overrideResult;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _adminSettingsSub;
+  
+  Map<String, dynamic> _historyOverrides = {};
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _historyOverridesSub;
+
   @override
   void initState() {
     super.initState();
@@ -91,6 +101,55 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
 
     _startGlobalClockSync();
     _initChatSync();
+    _initAdminSettingsSync();
+    _initHistoryOverridesSync();
+  }
+
+  void _initAdminSettingsSync() {
+    if (FirebaseService.isInitialized) {
+      _adminSettingsSub = FirebaseFirestore.instance
+          .collection('game_control')
+          .doc('taixiu')
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists && snapshot.data() != null) {
+          final data = snapshot.data()!;
+          if (mounted) {
+            setState(() {
+              _overrideSessionId = (data['forcedSessionId'] as num?)?.toInt();
+              _overrideDices = (data['forcedDices'] as List<dynamic>?)
+                  ?.map((e) => (e as num).toInt())
+                  .toList();
+              _overrideResult = data['forcedResult'] as String?;
+            });
+          }
+        }
+      }, onError: (e) {
+        debugPrint("Error listening to admin settings: $e");
+      });
+    }
+  }
+
+  void _initHistoryOverridesSync() {
+    if (FirebaseService.isInitialized) {
+      _historyOverridesSub = FirebaseFirestore.instance
+          .collection('game_control')
+          .doc('history_overrides')
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists && snapshot.data() != null) {
+          final data = snapshot.data()!;
+          final overridesMap = data['overrides'] as Map<String, dynamic>?;
+          if (mounted && overridesMap != null) {
+            setState(() {
+              _historyOverrides = overridesMap;
+            });
+          }
+        }
+      }, onError: (e) {
+        debugPrint("Error listening to history overrides: $e");
+      });
+    }
   }
 
   @override
@@ -100,6 +159,8 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     _chatSub?.cancel();
     _chatController.dispose();
     _chatScrollController.dispose();
+    _adminSettingsSub?.cancel();
+    _historyOverridesSub?.cancel();
     super.dispose();
   }
 
@@ -116,25 +177,25 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     // Lấy số giây của Unix epoch UTC hiện tại
     final int nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     
-    // Mỗi phiên game kéo dài cố định 30 giây
-    final int cyclePosition = nowSeconds % 30;
-    final int currentSessionId = nowSeconds ~/ 30;
+    // Mỗi phiên game kéo dài cố định 45 giây (30s đặt cược, 2s lắc, 13s kết quả)
+    final int cyclePosition = nowSeconds % 45;
+    final int currentSessionId = nowSeconds ~/ 45;
     
     String calculatedState;
     int remainingSeconds;
 
-    if (cyclePosition < 15) {
-      // Giây 0 - 14: Giai đoạn đặt cược (15s đếm ngược)
+    if (cyclePosition < 30) {
+      // Giây 0 - 29: Giai đoạn đặt cược (30s đếm ngược)
       calculatedState = "BETTING";
-      remainingSeconds = 15 - cyclePosition;
-    } else if (cyclePosition < 17) {
-      // Giây 15 - 16: Giai đoạn lắc đĩa (2s)
+      remainingSeconds = 30 - cyclePosition;
+    } else if (cyclePosition < 32) {
+      // Giây 30 - 31: Giai đoạn lắc đĩa (2s)
       calculatedState = "ROLLING";
       remainingSeconds = 0;
     } else {
-      // Giây 17 - 29: Giai đoạn công bố kết quả (13s)
+      // Giây 32 - 44: Giai đoạn công bố kết quả (13s)
       calculatedState = "RESULT";
-      remainingSeconds = 30 - cyclePosition;
+      remainingSeconds = 45 - cyclePosition;
     }
 
     // Xử lý chuyển đổi trạng thái phiên trước khi thực hiện các phép tính của chu kỳ mới
@@ -154,6 +215,18 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
         _stagedBetOnXiu = 0;
         _activeBetSide = "";
 
+        // Dọn dẹp cược đang diễn ra trên Firestore
+        if (FirebaseService.isInitialized) {
+          final user = Provider.of<AuthService>(context, listen: false).currentUser;
+          if (user != null) {
+            FirebaseFirestore.instance
+                .collection('active_bets')
+                .doc(user.uid)
+                .delete()
+                .catchError((e) => debugPrint("Error clearing active bet: $e"));
+          }
+        }
+
         // Gọi hiển thị cảnh báo nếu tài khoản hết tiền cược
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _checkAndShowZeroBalanceDialog();
@@ -166,20 +239,52 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     // Tính toán shouldCoverBowl sử dụng biến _userManuallyRevealed đã được reset đúng đắn
     bool shouldCoverBowl = false;
     if (calculatedState == "RESULT") {
-      // Nếu chế độ Nặn (Squeeze) Bật, che bát trong 5 giây đầu (giây 17 đến 21 trong chu kỳ)
+      // Nếu chế độ Nặn (Squeeze) Bật, che bát trong 5 giây đầu (giây 32 đến 36 trong chu kỳ)
       if (_isSqueezeMode && !_userManuallyRevealed) {
-        shouldCoverBowl = cyclePosition < 22;
+        shouldCoverBowl = cyclePosition < 37;
       }
     }
 
-    // Sinh xúc xắc ngẫu nhiên hạt giống (Seeded Random theo ID phiên đấu)
-    final math_random.Random seededRandom = math_random.Random(currentSessionId);
-    final int d1 = seededRandom.nextInt(6) + 1;
-    final int d2 = seededRandom.nextInt(6) + 1;
-    final int d3 = seededRandom.nextInt(6) + 1;
-    final List<int> currentDiceResult = [d1, d2, d3];
+    // Sinh xúc xắc ngẫu nhiên hoặc kết quả đè từ Admin
+    List<int> currentDiceResult;
+    if (FirebaseService.isInitialized && _overrideSessionId == currentSessionId) {
+      if (_overrideDices != null && _overrideDices!.length == 3) {
+        currentDiceResult = _overrideDices!;
+      } else if (_overrideResult == "Tài" || _overrideResult == "Xỉu") {
+        final bool targetIsTai = _overrideResult == "Tài";
+        final math_random.Random overrideRandom = math_random.Random(currentSessionId);
+        int od1, od2, od3, odSum;
+        bool odIsTai;
+        do {
+          od1 = overrideRandom.nextInt(6) + 1;
+          od2 = overrideRandom.nextInt(6) + 1;
+          od3 = overrideRandom.nextInt(6) + 1;
+          odSum = od1 + od2 + od3;
+          odIsTai = odSum >= 11;
+        } while (odIsTai != targetIsTai);
+        currentDiceResult = [od1, od2, od3];
+      } else {
+        final math_random.Random seededRandom = math_random.Random(currentSessionId);
+        currentDiceResult = [
+          seededRandom.nextInt(6) + 1,
+          seededRandom.nextInt(6) + 1,
+          seededRandom.nextInt(6) + 1,
+        ];
+      }
+    } else {
+      final math_random.Random seededRandom = math_random.Random(currentSessionId);
+      currentDiceResult = [
+        seededRandom.nextInt(6) + 1,
+        seededRandom.nextInt(6) + 1,
+        seededRandom.nextInt(6) + 1,
+      ];
+    }
+
+    final int d1 = currentDiceResult[0];
+    final int d2 = currentDiceResult[1];
+    final int d3 = currentDiceResult[2];
     final int total = d1 + d2 + d3;
-    final bool isTai = total >= 11 && total <= 17;
+    final bool isTai = total >= 11;
     final String resultLabel = isTai ? "TÀI" : "XỈU";
     final String currentResultText = "$resultLabel ($d1, $d2, $d3) = $total";
 
@@ -196,26 +301,51 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
       baseTaiPlayers += (cyclePosition * 1.5).toInt();
       baseXiuPlayers += (cyclePosition * 1.2).toInt();
     } else {
-      baseTaiPool += 15 * 12340;
-      baseXiuPool += 15 * 11580;
-      baseTaiPlayers += 22;
-      baseXiuPlayers += 18;
+      baseTaiPool += 30 * 12340;
+      baseXiuPool += 30 * 11580;
+      baseTaiPlayers += 45;
+      baseXiuPlayers += 36;
     }
 
-    // Sinh lịch sử cầu (Bead History) 120 ván trước đồng bộ từ ID phiên cũ
+    // Sinh lịch sử cầu (Bead History) 120 ván trước đồng bộ từ ID phiên cũ (kèm check can thiệp từ Admin)
     _sessionHistory.clear();
     for (int i = 120; i >= 1; i--) {
       final int pastSession = currentSessionId - i;
-      final math_random.Random r = math_random.Random(pastSession);
-      final int pd1 = r.nextInt(6) + 1;
-      final int pd2 = r.nextInt(6) + 1;
-      final int pd3 = r.nextInt(6) + 1;
-      final int total = pd1 + pd2 + pd3;
+      final String sessionKey = pastSession.toString();
+      List<int> pdDices;
+      
+      if (FirebaseService.isInitialized && _historyOverrides.containsKey(sessionKey)) {
+        final overrideVal = _historyOverrides[sessionKey];
+        if (overrideVal['dices'] != null) {
+          pdDices = (overrideVal['dices'] as List<dynamic>).map((e) => (e as num).toInt()).toList();
+        } else if (overrideVal['result'] != null) {
+          final bool targetIsTai = overrideVal['result'] == "Tài";
+          final math_random.Random overrideRandom = math_random.Random(pastSession);
+          int od1, od2, od3, odSum;
+          bool odIsTai;
+          do {
+            od1 = overrideRandom.nextInt(6) + 1;
+            od2 = overrideRandom.nextInt(6) + 1;
+            od3 = overrideRandom.nextInt(6) + 1;
+            odSum = od1 + od2 + od3;
+            odIsTai = odSum >= 11;
+          } while (odIsTai != targetIsTai);
+          pdDices = [od1, od2, od3];
+        } else {
+          final math_random.Random r = math_random.Random(pastSession);
+          pdDices = [r.nextInt(6) + 1, r.nextInt(6) + 1, r.nextInt(6) + 1];
+        }
+      } else {
+        final math_random.Random r = math_random.Random(pastSession);
+        pdDices = [r.nextInt(6) + 1, r.nextInt(6) + 1, r.nextInt(6) + 1];
+      }
+      
+      final int pdTotal = pdDices[0] + pdDices[1] + pdDices[2];
       _sessionHistory.add({
         'sessionId': pastSession,
-        'dices': [pd1, pd2, pd3],
-        'total': total,
-        'isTai': total >= 11,
+        'dices': pdDices,
+        'total': pdTotal,
+        'isTai': pdTotal >= 11,
       });
     }
 
@@ -257,7 +387,7 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
       _diceResult = currentDiceResult;
       _lastResultText = currentResultText;
       _isBowlCovered = shouldCoverBowl;
-      _bowlRevealSeconds = shouldCoverBowl ? (22 - cyclePosition) : 0;
+      _bowlRevealSeconds = shouldCoverBowl ? (37 - cyclePosition) : 0;
       _taiPool = baseTaiPool;
       _xiuPool = baseXiuPool;
       _taiPlayers = baseTaiPlayers;
@@ -328,7 +458,7 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     if (!_hasEvaluatedRoundBets) {
       _hasEvaluatedRoundBets = true;
       final int total = _diceResult.reduce((a, b) => a + b);
-      final bool isTai = total >= 11 && total <= 17;
+      final bool isTai = total >= 11;
       try {
         await _evaluateBets(total, isTai);
       } catch (e) {
@@ -625,6 +755,24 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
       _myBetOnTai = _stagedBetOnTai;
       _myBetOnXiu = _stagedBetOnXiu;
     });
+
+    final authService = Provider.of<AuthService>(context, listen: false);
+    if (FirebaseService.isInitialized) {
+      final user = authService.currentUser;
+      if (user != null) {
+        FirebaseFirestore.instance
+            .collection('active_bets')
+            .doc(user.uid)
+            .set({
+          'userId': user.uid,
+          'username': user.username,
+          'sessionId': _sessionId,
+          'choice': _stagedBetOnTai > 0 ? "Tài" : "Xỉu",
+          'amount': stagedTotal,
+          'timestamp': FieldValue.serverTimestamp(),
+        }).catchError((e) => debugPrint("Error logging active bet: $e"));
+      }
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Macau Prestige - Bảng Điều Khiển Admin</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <i class="fa-solid fa-dice-d6 logo-icon"></i>
+                <h2>MACAU<span>PRESTIGE</span></h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-line"></i> Bảng điều khiển
+                </a>
+                <a href="#control" class="nav-item" data-tab="control">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Can thiệp kết quả
+                </a>
+                <a href="#users" class="nav-item" data-tab="users">
+                    <i class="fa-solid fa-users-gear"></i> Quản lý tài khoản
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Hệ thống Admin Đồ Án</p>
+                <span class="badge-offline" id="db-status">Đang kết nối...</span>
+            </div>
+        </aside>
+
+        <!-- Main Content Panel -->
+        <main class="main-content">
+            <!-- Header Bar -->
+            <header class="top-bar">
+                <div class="page-title">
+                    <h1 id="tab-title">Bảng Điều Khiển Quản Trị</h1>
+                </div>
+                <div class="admin-profile">
+                    <div class="avatar">AD</div>
+                    <div class="admin-info">
+                        <h4>Admin ToanLK</h4>
+                      
+                    </div>
+                </div>
+            </header>
+
+            <!-- TAB 1: DASHBOARD -->
+            <section id="tab-dashboard" class="tab-pane active">
+                <!-- Status Cards -->
+                <div class="status-grid">
+                    <!-- Session Card -->
+                    <div class="status-card glow-gold">
+                        <div class="card-icon"><i class="fa-solid fa-clock"></i></div>
+                        <div class="card-data">
+                            <span class="label">Phiên Đấu Hiện Tại</span>
+                            <h3 id="current-session-id">------</h3>
+                            <span class="subtext" id="current-game-state">ĐANG KHỞI ĐỘNG</span>
+                        </div>
+                    </div>
+
+                    <!-- Countdown Card -->
+                    <div class="status-card glow-red">
+                        <div class="card-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+                        <div class="card-data">
+                            <span class="label">Thời Gian Đếm Ngược</span>
+                            <h3 id="countdown-timer">00s</h3>
+                            <span class="subtext">Đồng bộ UTC liên tục</span>
+                        </div>
+                    </div>
+
+                    <!-- Pool Tài Card -->
+                    <div class="status-card">
+                        <div class="card-icon color-tai"><i class="fa-solid fa-circle-chevron-up"></i></div>
+                        <div class="card-data">
+                            <span class="label">Tổng Cược TÀI</span>
+                            <h3 id="total-bet-tai">0 COIN</h3>
+                            <span class="subtext" id="player-count-tai">0 người chơi</span>
+                        </div>
+                    </div>
+
+                    <!-- Pool Xỉu Card -->
+                    <div class="status-card">
+                        <div class="card-icon color-xiu"><i class="fa-solid fa-circle-chevron-down"></i></div>
+                        <div class="card-data">
+                            <span class="label">Tổng Cược XỈU</span>
+                            <h3 id="total-bet-xiu">0 COIN</h3>
+                            <span class="subtext" id="player-count-xiu">0 người chơi</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pools Comparison Progress Bar -->
+                <div class="pool-bar-container">
+                    <div class="pool-bar-labels">
+                        <span class="color-tai">Tài (<span id="tai-percent">50</span>%)</span>
+                        <span class="color-xiu">Xỉu (<span id="xiu-percent">50</span>%)</span>
+                    </div>
+                    <div class="pool-progress-bar">
+                        <div class="pool-progress-fill" id="pool-fill" style="width: 50%;"></div>
+                    </div>
+                </div>
+
+                <!-- Live Bets Table -->
+                <div class="content-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-receipt"></i> Người Chơi Đang Đặt Cược (Phiên Hiện Tại)</h3>
+                        <span class="badge-live">LIVE</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="active-bets-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Mã Phiên</th>
+                                    <th>Cửa Chọn</th>
+                                    <th>Số Tiền Đặt</th>
+                                    <th>Thời Gian</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="empty-row">Chưa có người chơi nào đặt cược trong phiên này.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: INTERVENTION CONTROL -->
+            <section id="tab-control" class="tab-pane">
+                <div class="control-grid">
+                    <!-- Set Outcome Control -->
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-bolt-lightning"></i> Can Thiệp Hướng Kết Quả (Phiên Tiếp Theo)</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="description-text">Chọn hướng kết quả cho phiên kế tiếp. Hệ thống sẽ tự động tìm tổ hợp xúc xắc phù hợp để hiển thị.</p>
+                            
+                            <div class="outcome-selector">
+                                <label class="outcome-option">
+                                    <input type="radio" name="force-outcome" value="None" checked>
+                                    <div class="option-box">
+                                        <i class="fa-solid fa-shuffle"></i>
+                                        <span>Không can thiệp (Random)</span>
+                                    </div>
+                                </label>
+                                <label class="outcome-option">
+                                    <input type="radio" name="force-outcome" value="Tài">
+                                    <div class="option-box option-tai">
+                                        <i class="fa-solid fa-chevron-up"></i>
+                                        <span>Ép Kết Quả TÀI (11-18)</span>
+                                    </div>
+                                </label>
+                                <label class="outcome-option">
+                                    <input type="radio" name="force-outcome" value="Xỉu">
+                                    <div class="option-box option-xiu">
+                                        <i class="fa-solid fa-chevron-down"></i>
+                                        <span>Ép Kết Quả XỈU (3-10)</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Set Exact Dice Control -->
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-dice"></i> Can Thiệp Số Điểm Xúc Xắc Cụ Thể</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="description-text">Ấn định chính xác điểm số của từng viên xúc xắc ra ở phiên game tiếp theo (Ưu tiên cao hơn chế độ Tài/Xỉu phía bên trái).</p>
+                            
+                            <div class="dice-inputs-row">
+                                <div class="dice-input-container">
+                                    <label>Xúc xắc 1</label>
+                                    <select class="custom-select" id="dice-val-1">
+                                        <option value="0">Ngẫu nhiên</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                        <option value="6">6</option>
+                                    </select>
+                                </div>
+                                <div class="dice-input-container">
+                                    <label>Xúc xắc 2</label>
+                                    <select class="custom-select" id="dice-val-2">
+                                        <option value="0">Ngẫu nhiên</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                        <option value="6">6</option>
+                                    </select>
+                                </div>
+                                <div class="dice-input-container">
+                                    <label>Xúc xắc 3</label>
+                                    <select class="custom-select" id="dice-val-3">
+                                        <option value="0">Ngẫu nhiên</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                        <option value="6">6</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Apply Button Section -->
+                <div class="apply-section">
+                    <button class="btn btn-gold btn-large" id="btn-apply-override">
+                        <i class="fa-solid fa-circle-check"></i> Xác Nhận Thiết Lập Can Thiệp
+                    </button>
+                    <button class="btn btn-dark" id="btn-reset-override">
+                        <i class="fa-solid fa-trash-can"></i> Xóa Mọi Can Thiệp
+                    </button>
+                </div>
+
+                <!-- Current Override Status Card -->
+                <div class="content-card current-override-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-circle-info"></i> Trạng Thái Can Thiệp Đang Thiết Lập</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="override-status-display" id="override-status-summary">
+                            <i class="fa-solid fa-circle-dot status-green"></i> <span>Chưa có can thiệp được thiết lập. Xúc xắc sẽ random ngẫu nhiên.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: USERS CONTROL -->
+            <section id="tab-users" class="tab-pane">
+                <div class="content-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-users"></i> Danh Sách Tài Khoản Hệ Thống</h3>
+                        <div class="search-bar">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="search-users" placeholder="Tìm kiếm tên tài khoản...">
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>ID Code</th>
+                                    <th>Username</th>
+                                    <th>Họ và Tên</th>
+                                    <th>Số điện thoại</th>
+                                    <th>Cấp VIP</th>
+                                    <th>Số dư ví</th>
+                                    <th>Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="7" class="empty-row">Đang tải danh sách tài khoản...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL DIALOG FOR BALANCE UPDATE -->
+    <div class="modal-overlay" id="balance-modal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Thay đổi số dư tài khoản</h3>
+                <button class="btn-close-modal" id="btn-close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="user-details-summary">
+                    <p>Tên tài khoản: <strong id="modal-username">---</strong></p>
+                    <p>Số dư hiện tại: <span class="balance-text" id="modal-current-balance">0.00 COIN</span></p>
+                </div>
+                <div class="input-group">
+                    <label for="modal-input-amount">Số lượng COIN điều chỉnh</label>
+                    <input type="number" id="modal-input-amount" placeholder="Ví dụ: 1000 để cộng, -1000 để trừ..." step="1">
+                </div>
+                <div class="adjustment-helpers">
+                    <button class="btn btn-sm btn-dark" onclick="adjustAmount(100)">+100</button>
+                    <button class="btn btn-sm btn-dark" onclick="adjustAmount(1000)">+1,000</button>
+                    <button class="btn btn-sm btn-dark" onclick="adjustAmount(5000)">+5,000</button>
+                    <button class="btn btn-sm btn-dark" onclick="adjustAmount(-1000)">-1,000</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-dark" id="btn-cancel-balance">Hủy</button>
+                <button class="btn btn-gold" id="btn-save-balance">Cập Nhật Số Dư</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <!-- Custom Application Javascript -->
+    <script src="app.js"></script>
+</body>
+</html>

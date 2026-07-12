@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Cho phép đọc/ghi bảng users (để kiểm tra trùng username lúc đăng ký và để Admin thay đổi số dư)
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+    
+    // Chỉ cho phép người dùng đã đăng nhập xem/tạo giao dịch nạp rút của chính mình
+    match /transactions/{transactionId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Chỉ cho phép người dùng đã đăng nhập xem/tạo lịch sử đặt cược của chính mình
+    match /bet_history/{betId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Cho phép người dùng đã đăng nhập xem/gửi tin nhắn chat trong phòng game
+    match /game_chat/{messageId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // --- CẤU HÌNH THÊM MỚI PHỤC VỤ TRANG ADMIN ---
+
+    // Cho phép đọc/ghi thông tin cược đang diễn ra thời gian thực
+    match /active_bets/{betId} {
+      allow read, write: if true;
+    }
+
+    // Cho phép đọc/ghi cấu hình can thiệp kết quả Tài Xỉu từ Admin
+    match /game_control/{controlId} {
+      allow read, write: if true;
+    }
+  }
+}

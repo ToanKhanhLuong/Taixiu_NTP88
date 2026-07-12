@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "admin": "npx -y http-server ./admin_panel -p 8080"
+  },
   "dependencies": {
     "firebase": "^12.15.0"
   }
