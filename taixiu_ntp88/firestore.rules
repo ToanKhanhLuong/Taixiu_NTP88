@@ -2,19 +2,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Cho phép đọc/ghi bảng users (để kiểm tra trùng username lúc đăng ký và để Admin thay đổi số dư)
+    // Hàm kiểm tra xem tài khoản đăng nhập có phải Admin không
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'toanlk04@gmail.com' ||
+        request.auth.token.email == 'toanlk290804@gmail.com' ||
+        request.auth.token.email == 'admin@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+        ))
+      );
+    }
+    
+    // Bảng users: Người dùng đọc/ghi của chính mình, Admin có toàn quyền quản lý
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Cho phép đăng ký tài khoản mới khi chưa có tài liệu
+      allow create: if request.auth != null;
     }
     
-    // Chỉ cho phép người dùng đã đăng nhập xem/tạo giao dịch nạp rút của chính mình
+    // Chỉ cho phép người dùng đã đăng nhập xem/tạo giao dịch nạp rút của chính mình, Admin được xem tất cả
     match /transactions/{transactionId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && (
+        request.auth.uid == request.resource.data.userId || 
+        (resource != null && request.auth.uid == resource.data.userId) || 
+        isAdmin()
+      );
     }
     
-    // Chỉ cho phép người dùng đã đăng nhập xem/tạo lịch sử đặt cược của chính mình
+    // Chỉ cho phép người dùng đã đăng nhập xem/tạo lịch sử đặt cược của chính mình, Admin được xem tất cả
     match /bet_history/{betId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && (
+        request.auth.uid == request.resource.data.userId || 
+        (resource != null && request.auth.uid == resource.data.userId) || 
+        isAdmin()
+      );
     }
     
     // Cho phép người dùng đã đăng nhập xem/gửi tin nhắn chat trong phòng game
@@ -22,16 +45,24 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // --- CẤU HÌNH THÊM MỚI PHỤC VỤ TRANG ADMIN ---
+    // Bảng vinh danh vòng quay may mắn (Lucky Spin Leaderboard)
+    match /lucky_spin_leaderboard/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- CẤU HÌNH BẢO MẬT PHỤC VỤ TRANG ADMIN ---
 
     // Cho phép đọc/ghi thông tin cược đang diễn ra thời gian thực
     match /active_bets/{betId} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null || isAdmin();
     }
 
-    // Cho phép đọc/ghi cấu hình can thiệp kết quả Tài Xỉu từ Admin
+    // Chỉ Admin mới được can thiệp kết quả (ghi đè), người chơi chỉ được đọc kết quả để đồng bộ
     match /game_control/{controlId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

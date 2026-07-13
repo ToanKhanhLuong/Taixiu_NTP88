@@ -34,6 +34,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // 1. POPUP: Xem Hồ Sơ Chi Tiết
   void _showViewProfile(BuildContext context, UserModel user) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final displayBalance = user.balance - authService.activeBetAmount;
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.cardDark,
@@ -68,7 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildDetailRow("Cấp độ VIP:", "VIP ${user.vipLevel}"),
               _buildDetailRow("Tổng nạp:", "${user.totalDeposited.toStringAsFixed(0)} COIN"),
               _buildDetailRow("Ảnh đại diện:", _getAvatarName(user.avatarUrl)),
-              _buildDetailRow("Số dư tài khoản:", "${user.balance.toStringAsFixed(0)} COIN"),
+              _buildDetailRow("Số dư tài khoản:", "${displayBalance.toStringAsFixed(0)} COIN"),
               const SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
@@ -134,6 +136,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) return 'Họ tên không được để trống';
+                    if (val.trim().length < 2) return 'Họ tên phải từ 2 ký tự trở lên';
+                    if (val.trim().length > 50) return 'Họ tên tối đa 50 ký tự';
+                    final RegExp nameRegex = RegExp(r"^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔƠưăâêôơ\s']+$");
+                    if (!nameRegex.hasMatch(val.trim())) return 'Họ tên không được chứa số hoặc ký tự đặc biệt';
                     return null;
                   },
                 ),
@@ -148,6 +154,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) return 'SĐT không được để trống';
+                    final RegExp phoneRegex = RegExp(r'^0[35789][0-9]{8}$');
+                    if (!phoneRegex.hasMatch(val.trim())) {
+                      return 'Số điện thoại không hợp lệ (10 chữ số, đầu 03/05/07/08/09)';
+                    }
                     return null;
                   },
                 ),
@@ -305,7 +315,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         labelStyle: TextStyle(color: AppColors.textGrey),
                       ),
                       validator: (val) {
-                        if (val == null || val.length < 6) return 'Mật khẩu tối thiểu từ 6 ký tự';
+                        if (val == null || val.trim().isEmpty) return 'Mật khẩu không được để trống';
+                        if (val.length < 6) return 'Mật khẩu phải chứa ít nhất 6 ký tự';
+                        if (val.length > 32) return 'Mật khẩu tối đa 32 ký tự';
+                        if (val.contains(' ')) return 'Mật khẩu không được chứa khoảng trắng';
                         return null;
                       },
                     ),
@@ -504,7 +517,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.only(right: 16.0),
             child: Center(
               child: Text(
-                "${(user?.balance ?? 0).toStringAsFixed(0)} COIN",
+                "${((user?.balance ?? 0) - authService.activeBetAmount).toStringAsFixed(0)} COIN",
                 style: const TextStyle(
                   color: AppColors.goldAccent,
                   fontWeight: FontWeight.bold,
@@ -705,23 +718,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required VoidCallback onTap,
   }) {
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: AppColors.goldAccent, size: 22),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(icon, color: AppColors.goldAccent, size: 22),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
         ),
+        trailing: const Icon(
+          Icons.chevron_right,
+          color: AppColors.textGrey,
+          size: 20,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       ),
-      trailing: const Icon(
-        Icons.chevron_right,
-        color: AppColors.textGrey,
-        size: 20,
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
     );
   }
 }

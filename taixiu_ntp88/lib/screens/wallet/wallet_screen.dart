@@ -176,7 +176,7 @@ class _WalletScreenState extends State<WalletScreen> {
       tx.type == 'promo_bonus' || 
       tx.type == 'rebate'
     ).toList();
-    final balance = user?.balance ?? 0.0;
+    final balance = (user?.balance ?? 0.0) - authService.activeBetAmount;
 
     return Scaffold(
       appBar: AppBar(

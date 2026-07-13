@@ -4,6 +4,7 @@ import '../../core/constants/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../data/models/user_model.dart';
 import '../game/taixiu_screen.dart';
+import '../game/luckyspin_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/history_screen.dart';
 import '../promos/promos_screen.dart';
@@ -173,7 +174,7 @@ class LobbyTab extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             const Text(
-              "MACAU PRESTIGE",
+              "NTP88",
               style: TextStyle(
                 color: AppColors.goldAccent,
                 fontWeight: FontWeight.bold,
@@ -229,7 +230,7 @@ class LobbyTab extends StatelessWidget {
                       const Icon(Icons.monetization_on, color: AppColors.goldAccent, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        "${(user?.balance ?? 0.0).toStringAsFixed(0)} COIN",
+                        "${((user?.balance ?? 0.0) - authService.activeBetAmount).toStringAsFixed(0)} COIN",
                         style: const TextStyle(
                           color: AppColors.goldLight,
                           fontWeight: FontWeight.w900,
@@ -280,30 +281,17 @@ class LobbyTab extends StatelessWidget {
                 ),
                 _buildGameCard(
                   context,
-                  title: "SLOTS MACAU",
-                  subtitle: "Quay Hũ Jackpot",
-                  icon: Icons.videogame_asset,
-                  activeColor: Colors.purpleAccent,
-                  isLive: false,
-                  onTap: () => _showComingSoon(context, "Slots Macau"),
-                ),
-                _buildGameCard(
-                  context,
-                  title: "BACCARAT LIVE",
-                  subtitle: "Sòng Bài Trực Tuyến",
-                  icon: Icons.style,
-                  activeColor: Colors.blueAccent,
-                  isLive: false,
-                  onTap: () => _showComingSoon(context, "Baccarat Live"),
-                ),
-                _buildGameCard(
-                  context,
-                  title: "ROULETTE WHEEL",
+                  title: "VÒNG QUAY TỶ PHÚ",
                   subtitle: "Vòng Quay May Mắn",
                   icon: Icons.album_outlined,
                   activeColor: AppColors.success,
-                  isLive: false,
-                  onTap: () => _showComingSoon(context, "Roulette Wheel"),
+                  isLive: true,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LuckySpinScreen()),
+                    );
+                  },
                 ),
               ],
             ),
@@ -362,15 +350,6 @@ class LobbyTab extends StatelessWidget {
             const SizedBox(height: 20),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showComingSoon(BuildContext context, String game) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("'$game' hiện đang bảo trì nâng cấp. Hãy chơi 'Tài Xỉu VIP'!"),
-        backgroundColor: AppColors.info,
       ),
     );
   }

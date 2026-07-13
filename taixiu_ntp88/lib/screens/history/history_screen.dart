@@ -61,7 +61,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             padding: const EdgeInsets.only(right: 16.0),
             child: Center(
               child: Text(
-                "${user.balance.toStringAsFixed(0)} COIN",
+                "${(user.balance - authService.activeBetAmount).toStringAsFixed(0)} COIN",
                 style: const TextStyle(
                   color: AppColors.goldAccent,
                   fontWeight: FontWeight.bold,
@@ -180,7 +180,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   final String typeLower = bet.gameType.toLowerCase();
                   if (_activeFilter == "Tai Xiu") return typeLower.contains("tai xiu") || typeLower.contains("tài xỉu");
                   if (_activeFilter == "Football Bets") return typeLower.contains("football") || typeLower.contains("bóng đá");
-                  if (_activeFilter == "Casino") return typeLower.contains("casino");
+                  if (_activeFilter == "Casino") return typeLower.contains("casino") || typeLower.contains("lucky spin") || typeLower.contains("vòng quay");
                   return true;
                 }).take(25).toList();
 

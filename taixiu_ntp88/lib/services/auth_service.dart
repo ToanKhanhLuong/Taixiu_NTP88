@@ -37,6 +37,16 @@ class AuthService with ChangeNotifier {
   List<BetModel> get bets => _bets;
   bool get isFirebaseActive => FirebaseService.isInitialized;
 
+  double _activeBetAmount = 0.0;
+  double get activeBetAmount => _activeBetAmount;
+
+  void setActiveBetAmount(double amount) {
+    if (_activeBetAmount != amount) {
+      _activeBetAmount = amount;
+      notifyListeners();
+    }
+  }
+
   // Dữ liệu giả lập (Preview Mode) khi Firebase chưa kết nối
   final Map<String, UserModel> _mockUsers = {};
   final List<TransactionModel> _mockTransactions = [];

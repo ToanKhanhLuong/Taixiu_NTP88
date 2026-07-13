@@ -154,6 +154,10 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
 
   @override
   void dispose() {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      authService.setActiveBetAmount(0.0);
+    } catch (_) {}
     _gameTimer?.cancel();
     _shakeController.dispose();
     _chatSub?.cancel();
@@ -427,11 +431,10 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Vui lòng truy cập Tab 'Ví tiền' ở thanh menu chân trang để thực hiện nạp thêm COIN."),
-                      backgroundColor: AppColors.info,
-                    ),
+                  _showStyledSnackBar(
+                    message: "Vui lòng truy cập Tab 'Ví tiền' ở thanh menu chân trang để thực hiện nạp thêm COIN.",
+                    icon: Icons.info_outline,
+                    color: AppColors.info,
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -463,12 +466,11 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
         await _evaluateBets(total, isTai);
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Lỗi lưu cược: ${e.toString().replaceAll('Exception: ', '')}"),
-              backgroundColor: AppColors.danger,
-              duration: const Duration(seconds: 4),
-            ),
+          _showStyledSnackBar(
+            message: "Lỗi lưu cược: ${e.toString().replaceAll('Exception: ', '')}",
+            icon: Icons.error_outline,
+            color: AppColors.danger,
+            durationSeconds: 4,
           );
         }
       }
@@ -527,37 +529,21 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
         await authService.placeBet(bet);
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Lỗi lưu cược: ${e.toString().replaceAll('Exception: ', '')}"),
-              backgroundColor: AppColors.danger,
-              duration: const Duration(seconds: 4),
-            ),
+          _showStyledSnackBar(
+            message: "Lỗi lưu cược: ${e.toString().replaceAll('Exception: ', '')}",
+            icon: Icons.cloud_off,
+            color: AppColors.danger,
+            durationSeconds: 4,
           );
         }
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: status == "win" ? AppColors.success : AppColors.danger,
-          duration: const Duration(seconds: 3),
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                status == "win" ? Icons.emoji_events_outlined : Icons.sentiment_very_dissatisfied,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                status == "win" 
-                    ? "CHIẾN THẮNG! Nhận +${winAmount.toStringAsFixed(0)} COIN" 
-                    : "THẤT BẠI! Mất -${totalBet.toStringAsFixed(0)} COIN",
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ],
-          ),
-        ),
+      _showStyledSnackBar(
+        message: status == "win" 
+            ? "+${winAmount.toStringAsFixed(0)} COIN" 
+            : "-${totalBet.toStringAsFixed(0)} COIN",
+        color: status == "win" ? AppColors.success : AppColors.danger,
+        durationSeconds: 3,
       );
     }
   }
@@ -706,12 +692,11 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
   void _performAllIn() {
     if (_gameState != "BETTING") return;
     if (_activeBetSide == "") {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Vui lòng chọn cửa cược (Tài hoặc Xỉu) trước khi All-In!"),
-          backgroundColor: AppColors.info,
-          duration: Duration(seconds: 1),
-        ),
+      _showStyledSnackBar(
+        message: "Vui lòng chọn cửa cược (Tài hoặc Xỉu) trước khi All-In!",
+        icon: Icons.info_outline,
+        color: AppColors.info,
+        durationSeconds: 2,
       );
       return;
     }
@@ -741,12 +726,11 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     
     double stagedTotal = _stagedBetOnTai + _stagedBetOnXiu;
     if (stagedTotal <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Vui lòng cược trước khi xác nhận!"),
-          backgroundColor: AppColors.info,
-          duration: Duration(seconds: 1),
-        ),
+      _showStyledSnackBar(
+        message: "Vui lòng cược trước khi xác nhận!",
+        icon: Icons.info_outline,
+        color: AppColors.info,
+        durationSeconds: 2,
       );
       return;
     }
@@ -774,32 +758,101 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
       }
     }
 
+    _showStyledSnackBar(
+      message: "Đặt cược ${stagedTotal.toStringAsFixed(0)} COIN thành công!",
+      icon: Icons.check_circle_outline,
+      color: AppColors.success,
+      durationSeconds: 2,
+    );
+  }
+
+  void _showStyledSnackBar({
+    required String message,
+    IconData? icon,
+    required Color color,
+    int durationSeconds = 3,
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text("Đặt cược ${stagedTotal.toStringAsFixed(0)} COIN thành công!"),
-        backgroundColor: AppColors.success,
-        duration: const Duration(seconds: 1),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: durationSeconds),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E).withOpacity(0.95),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: color.withOpacity(0.5),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.15),
+                blurRadius: 12,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: icon == null ? MainAxisAlignment.center : MainAxisAlignment.start,
+            children: [
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 12),
+              ],
+              icon == null
+                  ? Text(
+                      message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    )
+                  : Expanded(
+                      child: Text(
+                        message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   void _showClosedMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Đã đóng cược! Vui lòng chờ ván tiếp theo."),
-        backgroundColor: AppColors.danger,
-        duration: Duration(seconds: 1),
-      ),
+    _showStyledSnackBar(
+      message: "Đã đóng cược! Vui lòng chờ ván tiếp theo.",
+      icon: Icons.block,
+      color: AppColors.danger,
+      durationSeconds: 2,
     );
   }
 
   void _showInsufficientBalance() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Số dư không đủ! Vui lòng nạp thêm COIN."),
-        backgroundColor: AppColors.danger,
-        duration: Duration(seconds: 1),
-      ),
+    _showStyledSnackBar(
+      message: "Số dư không đủ! Vui lòng nạp thêm COIN.",
+      icon: Icons.cancel_outlined,
+      color: AppColors.danger,
+      durationSeconds: 2,
     );
   }
 
@@ -1147,14 +1200,19 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
     final user = authService.currentUser;
     final double displayBalance = (user?.balance ?? 0) - (_myBetOnTai + _myBetOnXiu);
 
+    // Synchronize active cược of Tài Xỉu globally
+    final double currentActiveBet = _myBetOnTai + _myBetOnXiu;
+    if (authService.activeBetAmount != currentActiveBet) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        authService.setActiveBetAmount(currentActiveBet);
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.primaryDark,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: AppColors.goldLight),
-          onPressed: () {},
-        ),
+        automaticallyImplyLeading: false,
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1185,12 +1243,6 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
               if (_showChat) {
                 _scrollToBottom();
               }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, color: AppColors.goldLight, size: 20),
-            onPressed: () {
-              Navigator.of(context).pop();
             },
           ),
         ],
@@ -1811,11 +1863,10 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
   Future<void> _handleSendMessage(AuthService authService) async {
     final user = authService.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Vui lòng đăng nhập để gửi tin nhắn chat."),
-          backgroundColor: AppColors.danger,
-        ),
+      _showStyledSnackBar(
+        message: "Vui lòng đăng nhập để gửi tin nhắn chat.",
+        icon: Icons.lock_outline,
+        color: AppColors.danger,
       );
       return;
     }
@@ -1835,8 +1886,10 @@ class _TaiXiuScreenState extends State<TaiXiuScreen> with TickerProviderStateMix
         );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Không thể gửi tin nhắn: $e"), backgroundColor: AppColors.danger),
+          _showStyledSnackBar(
+            message: "Không thể gửi tin nhắn: $e",
+            icon: Icons.error_outline,
+            color: AppColors.danger,
           );
         }
       }

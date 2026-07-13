@@ -211,9 +211,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     hintText: "Nhập họ và tên của bạn",
                     prefixIcon: Icons.person_outline,
                     validator: (val) {
-                      if (val == null || val.isEmpty) {
+                      if (val == null || val.trim().isEmpty) {
                         return 'Vui lòng nhập họ và tên';
                       }
+                      if (val.trim().length < 2) return 'Họ tên phải từ 2 ký tự trở lên';
+                      if (val.trim().length > 50) return 'Họ tên tối đa 50 ký tự';
+                      final RegExp nameRegex = RegExp(r"^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔƠưăâêôơ\s']+$");
+                      if (!nameRegex.hasMatch(val.trim())) return 'Họ tên không được chứa số hoặc ký tự đặc biệt';
                       return null;
                     },
                   ),
@@ -227,11 +231,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     hintText: "Chọn tên đăng nhập duy nhất",
                     prefixIcon: Icons.alternate_email_outlined,
                     validator: (val) {
-                      if (val == null || val.isEmpty) {
+                      if (val == null || val.trim().isEmpty) {
                         return 'Vui lòng nhập tên đăng nhập';
                       }
-                      if (val.length < 4) {
+                      if (val.trim().length < 4) {
                         return 'Tên đăng nhập phải dài ít nhất 4 ký tự';
+                      }
+                      if (val.trim().length > 20) {
+                        return 'Tên đăng nhập tối đa 20 ký tự';
+                      }
+                      final RegExp usernameRegex = RegExp(r'^[a-zA-Z0-9._]+$');
+                      if (!usernameRegex.hasMatch(val.trim())) {
+                        return 'Chỉ chấp nhận chữ cái, số, dấu chấm (.) và gạch dưới (_)';
                       }
                       return null;
                     },
@@ -247,11 +258,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     prefixIcon: Icons.mail_outline,
                     keyboardType: TextInputType.emailAddress,
                     validator: (val) {
-                      if (val == null || val.isEmpty) {
+                      if (val == null || val.trim().isEmpty) {
                         return 'Vui lòng nhập email';
                       }
                       final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                      if (!emailRegex.hasMatch(val)) {
+                      if (!emailRegex.hasMatch(val.trim())) {
                         return 'Vui lòng nhập địa chỉ email hợp lệ';
                       }
                       return null;
@@ -268,8 +279,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     prefixIcon: Icons.phone_android_outlined,
                     keyboardType: TextInputType.phone,
                     validator: (val) {
-                      if (val == null || val.isEmpty) {
+                      if (val == null || val.trim().isEmpty) {
                         return 'Vui lòng nhập số điện thoại';
+                      }
+                      final RegExp phoneRegex = RegExp(r'^0[35789][0-9]{8}$');
+                      if (!phoneRegex.hasMatch(val.trim())) {
+                        return 'Số điện thoại không hợp lệ (10 chữ số, đầu 03/05/07/08/09)';
                       }
                       return null;
                     },
@@ -297,12 +312,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       },
                     ),
                     validator: (val) {
-                      if (val == null || val.isEmpty) {
+                      if (val == null || val.trim().isEmpty) {
                         return 'Vui lòng nhập mật khẩu';
                       }
                       if (val.length < 6) {
                         return 'Mật khẩu phải dài ít nhất 6 ký tự';
                       }
+                      if (val.length > 32) return 'Mật khẩu tối đa 32 ký tự';
+                      if (val.contains(' ')) return 'Mật khẩu không được chứa khoảng trắng';
                       return null;
                     },
                   ),

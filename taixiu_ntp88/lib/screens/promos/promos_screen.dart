@@ -60,7 +60,7 @@ class PromosScreen extends StatelessWidget {
             padding: const EdgeInsets.only(right: 16.0),
             child: Center(
               child: Text(
-                "${(user?.balance ?? 0).toStringAsFixed(0)} COIN",
+                "${((user?.balance ?? 0) - authService.activeBetAmount).toStringAsFixed(0)} COIN",
                 style: const TextStyle(
                   color: AppColors.goldAccent,
                   fontWeight: FontWeight.bold,
