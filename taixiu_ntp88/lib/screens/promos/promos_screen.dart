@@ -1,11 +1,56 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../data/models/user_model.dart';
 
-class PromosScreen extends StatelessWidget {
+class PromosScreen extends StatefulWidget {
   const PromosScreen({super.key});
+
+  @override
+  State<PromosScreen> createState() => _PromosScreenState();
+}
+
+class _PromosScreenState extends State<PromosScreen> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild every 10 seconds to update check-in countdown
+    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _getCheckInCountdown(UserModel user) {
+    if (user.lastCheckInTime == null) return "";
+    final now = DateTime.now();
+    final nextCheckIn = user.lastCheckInTime!.add(const Duration(hours: 5));
+    if (now.isAfter(nextCheckIn)) {
+      return "";
+    }
+    final diff = nextCheckIn.difference(now);
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes % 60;
+    final seconds = diff.inSeconds % 60;
+    if (hours > 0) {
+      return "Điểm danh tiếp theo sau: $hours giờ $minutes phút";
+    } else if (minutes > 0) {
+      return "Điểm danh tiếp theo sau: $minutes phút $seconds giây";
+    } else {
+      return "Điểm danh tiếp theo sau: $seconds giây";
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,13 +59,6 @@ class PromosScreen extends StatelessWidget {
 
     final List<Map<String, String>> promos = [
       {
-        "title": "NHIỆM VỤ NẠP ĐẦU TẶNG 40 COIN",
-        "subtitle": "Nạp từ 50 COIN nhận thêm ngay 40 COIN",
-        "description": "Nhiệm vụ chào mừng thành viên mới. Thực hiện giao dịch nạp tiền lần đầu tiên từ 50 COIN trở lên để nhận thêm 40 COIN thưởng nhiệm vụ miễn phí vào ví.",
-        "code": "WELCOME40",
-        "badge": "MỚI"
-      },
-      {
         "title": "HOÀN TRẢ CƯỢC VIP KHÔNG GIỚI HẠN",
         "subtitle": "Nhận hoàn trả ngay sau mỗi lần đặt cược",
         "description": "Đặc quyền hoàn trả tức thời cho mỗi lượt đặt cược hợp lệ dựa trên cấp độ VIP của bạn: VIP 0: 0.2%, VIP 1: 0.5%, VIP 2: 1.0%, VIP 3: 1.5%, VIP 4: 2.0%, VIP 5: 2.5%, VIP 6: 3.0%. Không giới hạn hạn mức nhận.",
@@ -28,17 +66,10 @@ class PromosScreen extends StatelessWidget {
         "badge": "HOT"
       },
       {
-        "title": "ĐẶC QUYỀN THĂNG CẤP VIP",
-        "subtitle": "Thưởng lên tới 1,600 COIN khi đạt VIP 6",
-        "description": "Mỗi khi thăng cấp VIP mới, nhận thưởng thăng cấp ngay lập tức vào ví: VIP 1 thưởng 50 COIN. Từ VIP 2 trở đi, phần thưởng nhân đôi (VIP 2: 100, VIP 3: 200, VIP 4: 400, VIP 5: 800, VIP 6: 1,600 COIN).",
-        "code": "VIPREWARD",
-        "badge": "VIP"
-      },
-      {
-        "title": "GIỚI THIỆU BẠN BÈ",
-        "subtitle": "Nhận ngay 50 COIN cho mỗi lượt giới thiệu",
-        "description": "Chia sẻ mã giới thiệu của bạn và nhận ngay 50 COIN khi bạn bè đăng ký và hoàn thành nạp tiền tối thiểu từ 100 COIN.",
-        "code": "REFCODE",
+        "title": "NHIỆM VỤ ĐIỂM DANH HÀNG GIỜ",
+        "subtitle": "Nhận ngay 5,000 COIN miễn phí mỗi 5 giờ",
+        "description": "Nhiệm vụ điểm danh định kỳ. Mỗi tài khoản sẽ được điểm danh một lần sau mỗi 5 giờ và nhận ngay 5,000 COIN thưởng miễn phí vào ví.",
+        "code": "CHECKIN",
         "badge": "QUÀ"
       }
     ];
@@ -185,12 +216,25 @@ class PromosScreen extends StatelessWidget {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => _handleClaim(context, authService, user, promo["code"]!),
+                            onPressed: (promo["code"] == "CHECKIN" && user != null && _getCheckInCountdown(user).isNotEmpty)
+                                ? null
+                                : () => _handleClaim(context, authService, user, promo["code"]!),
+                            style: TextButton.styleFrom(
+                              foregroundColor: (promo["code"] == "CHECKIN" && user != null && _getCheckInCountdown(user).isNotEmpty)
+                                  ? Colors.white30
+                                  : AppColors.goldAccent,
+                            ),
                             child: Row(
                               children: [
                                 Text(_getClaimButtonText(user, promo["code"]!)),
                                 const SizedBox(width: 4),
-                                const Icon(Icons.arrow_forward_ios, size: 12),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 12,
+                                  color: (promo["code"] == "CHECKIN" && user != null && _getCheckInCountdown(user).isNotEmpty)
+                                      ? Colors.white30
+                                      : AppColors.goldAccent,
+                                ),
                               ],
                             ),
                           )
@@ -210,22 +254,23 @@ class PromosScreen extends StatelessWidget {
   Widget _buildClaimStatus(UserModel user, String code) {
     double pendingAmount = 0.0;
     String statusText = "";
+    bool isReady = false;
     
-    if (code == "WELCOME40") {
-      pendingAmount = user.unclaimedFirstDepositBonus;
-      statusText = pendingAmount > 0 
-          ? "Đang có: ${pendingAmount.toStringAsFixed(0)} COIN chờ nhận" 
-          : (user.totalDeposited > 0 ? "Nhiệm vụ đã hoàn thành hoặc không khả dụng" : "Chưa thực hiện nạp đầu");
-    } else if (code == "VIPREBATE") {
+    if (code == "VIPREBATE") {
       pendingAmount = user.unclaimedRebate;
       statusText = pendingAmount > 0 
           ? "Tích lũy hoàn trả: ${pendingAmount.toStringAsFixed(2)} COIN" 
           : "Chưa có hoàn trả tích lũy";
-    } else if (code == "VIPREWARD") {
-      pendingAmount = user.unclaimedVipLevelRewards;
-      statusText = pendingAmount > 0 
-          ? "Thưởng thăng cấp: ${pendingAmount.toStringAsFixed(0)} COIN chờ nhận" 
-          : "Chưa có thưởng thăng cấp mới";
+      isReady = pendingAmount > 0;
+    } else if (code == "CHECKIN") {
+      final countdown = _getCheckInCountdown(user);
+      if (countdown.isEmpty) {
+        statusText = "Sẵn sàng điểm danh nhận 5,000 COIN!";
+        isReady = true;
+      } else {
+        statusText = countdown;
+        isReady = false;
+      }
     }
 
     if (statusText.isEmpty) return const SizedBox.shrink();
@@ -233,17 +278,17 @@ class PromosScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: pendingAmount > 0 ? Colors.green.withOpacity(0.15) : Colors.black12,
+        color: isReady ? Colors.green.withOpacity(0.15) : Colors.black12,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: pendingAmount > 0 ? Colors.green : Colors.white24,
+          color: isReady ? Colors.green : Colors.white24,
           width: 0.5,
         ),
       ),
       child: Text(
         statusText,
         style: TextStyle(
-          color: pendingAmount > 0 ? Colors.green : Colors.white54,
+          color: isReady ? Colors.green : Colors.white54,
           fontSize: 11,
           fontWeight: FontWeight.bold,
         ),
@@ -254,12 +299,11 @@ class PromosScreen extends StatelessWidget {
   String _getClaimButtonText(UserModel? user, String code) {
     if (user == null) return "NHẬN NGAY";
     
-    if (code == "WELCOME40") {
-      return user.unclaimedFirstDepositBonus > 0 ? "NHẬN NGAY" : "XEM THÊM";
-    } else if (code == "VIPREBATE") {
+    if (code == "VIPREBATE") {
       return user.unclaimedRebate > 0 ? "NHẬN NGAY" : "XEM THÊM";
-    } else if (code == "VIPREWARD") {
-      return user.unclaimedVipLevelRewards > 0 ? "NHẬN NGAY" : "XEM THÊM";
+    } else if (code == "CHECKIN") {
+      final countdown = _getCheckInCountdown(user);
+      return countdown.isEmpty ? "ĐIỂM DANH" : "CHỜ 5H";
     }
     return "NHẬN NGAY";
   }
@@ -275,34 +319,7 @@ class PromosScreen extends StatelessWidget {
       return;
     }
 
-    if (code == "WELCOME40") {
-      if (user.unclaimedFirstDepositBonus > 0) {
-        try {
-          await authService.claimFirstDepositBonus();
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Nhận thưởng nạp đầu thành công +40 COIN!"),
-                backgroundColor: AppColors.success,
-              ),
-            );
-          }
-        } catch (e) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Lỗi: $e"), backgroundColor: AppColors.danger),
-            );
-          }
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Vui lòng nạp tiền lần đầu từ 50 COIN trở lên để đủ điều kiện nhận thưởng."),
-            backgroundColor: AppColors.info,
-          ),
-        );
-      }
-    } else if (code == "VIPREBATE") {
+    if (code == "VIPREBATE") {
       if (user.unclaimedRebate > 0) {
         try {
           final amt = user.unclaimedRebate;
@@ -330,15 +347,15 @@ class PromosScreen extends StatelessWidget {
           ),
         );
       }
-    } else if (code == "VIPREWARD") {
-      if (user.unclaimedVipLevelRewards > 0) {
+    } else if (code == "CHECKIN") {
+      final countdown = _getCheckInCountdown(user);
+      if (countdown.isEmpty) {
         try {
-          final amt = user.unclaimedVipLevelRewards;
-          await authService.claimVipLevelRewards();
+          await authService.claimCheckIn();
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Nhận thưởng thăng cấp VIP thành công +${amt.toStringAsFixed(0)} COIN!"),
+              const SnackBar(
+                content: Text("Điểm danh thành công +5,000 COIN!"),
                 backgroundColor: AppColors.success,
               ),
             );
@@ -352,20 +369,12 @@ class PromosScreen extends StatelessWidget {
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Hãy tích lũy nạp tiền để thăng cấp VIP và nhận phần thưởng thăng hạng."),
+          SnackBar(
+            content: Text("Chưa đến giờ điểm danh! $countdown"),
             backgroundColor: AppColors.info,
           ),
         );
       }
-    } else {
-      // GIỚI THIỆU BẠN BÈ / MÃ KHÁC
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Đã sao chép mã khuyến mãi '${code}'!"),
-          backgroundColor: AppColors.success,
-        ),
-      );
     }
   }
 }

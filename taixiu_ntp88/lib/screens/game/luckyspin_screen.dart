@@ -118,10 +118,10 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
     }
 
     final double effectiveBalance = user.balance - authService.activeBetAmount;
-    if (effectiveBalance < 100.0) {
+    if (effectiveBalance < 800.0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Số dư không đủ! Cần 100 COIN mỗi lượt quay."),
+          content: Text("Số dư không đủ! Cần 800 COIN mỗi lượt quay."),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -140,7 +140,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
       gameType: 'Lucky Spin',
       detail: 'Vòng Quay May Mắn',
       choice: 'Quay thưởng',
-      amount: 100.0,
+      amount: 800.0,
       winAmount: targetSector.value,
       status: isWin ? 'win' : 'loss',
       resultString: isWin ? 'Nhận +${targetSector.value.toStringAsFixed(0)} COIN' : 'Chúc bạn may mắn lần sau',
@@ -149,7 +149,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
 
     setState(() {
       _isSpinning = true;
-      _displayedBalanceOffset = -100.0;
+      _displayedBalanceOffset = -800.0;
       _pendingBet = bet;
       _lastResult = null;
     });
@@ -195,7 +195,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
       setState(() {
         _lastResult = targetSector;
         _isSpinning = false;
-        _displayedBalanceOffset = targetSector.value - 100.0;
+        _displayedBalanceOffset = targetSector.value - 800.0;
       });
 
       // Show congratulations dialog
@@ -431,7 +431,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text(
-                    "CHI PHÍ: 100 COIN / LƯỢT",
+                    "CHI PHÍ: 800 COIN / LƯỢT",
                     style: TextStyle(
                       color: AppColors.goldAccent,
                       fontWeight: FontWeight.bold,
@@ -536,7 +536,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
                                   ),
                                   if (!_isSpinning)
                                     const Text(
-                                      "100 C",
+                                      "800 C",
                                       style: TextStyle(
                                         color: Colors.white70,
                                         fontSize: 9,
@@ -748,7 +748,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen> with SingleTickerProv
               Row(
                 children: [
                   Text(
-                    "Cược: 100",
+                    "Cược: 800",
                     style: TextStyle(color: AppColors.textGrey.withOpacity(0.6), fontSize: 11),
                   ),
                   const SizedBox(width: 12),

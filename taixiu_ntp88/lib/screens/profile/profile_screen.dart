@@ -4,6 +4,9 @@ import '../../core/constants/app_colors.dart';
 import '../../data/models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
+import 'friend_list_screen.dart';
+import '../../data/repositories/friend_repository.dart';
+import '../../data/repositories/private_chat_repository.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -679,6 +682,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: "Cài đặt thông báo",
                     onTap: () => _showNotificationSettings(context),
                   ),
+                  const Divider(color: AppColors.borderGrey, height: 1),
+                  StreamBuilder<bool>(
+                    stream: FriendRepository().streamHasIncomingRequests(user?.uid ?? ''),
+                    builder: (context, reqSnapshot) {
+                      final hasRequest = reqSnapshot.data ?? false;
+                      return StreamBuilder<bool>(
+                        stream: PrivateChatRepository().streamHasUnreadMessages(user?.uid ?? ''),
+                        builder: (context, chatSnapshot) {
+                          final hasChat = chatSnapshot.data ?? false;
+                          return _buildProfileOption(
+                            icon: Icons.people_outline,
+                            title: "Danh sách bạn bè",
+                            showBadge: hasRequest || hasChat,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const FriendListScreen()),
+                              );
+                            },
+                          );
+                        }
+                      );
+                    }
+                  ),
                 ],
               ),
             ),
@@ -717,19 +744,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required IconData icon,
     required String title,
     required VoidCallback onTap,
+    bool showBadge = false,
   }) {
     return Material(
       color: Colors.transparent,
       child: ListTile(
         onTap: onTap,
         leading: Icon(icon, color: AppColors.goldAccent, size: 22),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
+        title: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (showBadge) ...[
+              const SizedBox(width: 8),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ],
         ),
         trailing: const Icon(
           Icons.chevron_right,

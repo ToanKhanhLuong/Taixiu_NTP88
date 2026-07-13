@@ -503,6 +503,78 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  // Chuyển coin cho bạn bè
+  Future<bool> transferCoin(String receiverUid, String receiverName, double amount) async {
+    if (_currentUser == null || _currentUser!.balance < amount || amount <= 0) return false;
+    if (_currentUser!.uid == receiverUid) return false;
+
+    if (isFirebaseActive) {
+      try {
+        await _userRepo.transferCoin(
+          senderUid: _currentUser!.uid,
+          receiverUid: receiverUid,
+          amount: amount,
+        );
+      } catch (e) {
+        debugPrint("CRITICAL ERROR: Failed to transfer coin: $e");
+        rethrow;
+      }
+
+      // Log transaction for sender
+      try {
+        final txRef = _firestore.collection('transactions').doc();
+        final tx = TransactionModel(
+          id: txRef.id,
+          userId: _currentUser!.uid,
+          type: 'transfer_out',
+          amount: amount,
+          status: 'completed',
+          timestamp: DateTime.now(),
+          note: 'Chuyển coin cho $receiverName',
+        );
+        await _firestore.collection('transactions').doc(txRef.id).set(tx.toMap());
+      } catch (e) {
+        debugPrint("WARNING: Failed to log transfer_out transaction: $e");
+      }
+
+      // Log transaction for receiver
+      try {
+        final txRef = _firestore.collection('transactions').doc();
+        final tx = TransactionModel(
+          id: txRef.id,
+          userId: receiverUid,
+          type: 'transfer_in',
+          amount: amount,
+          status: 'completed',
+          timestamp: DateTime.now(),
+          note: 'Nhận coin từ ${_currentUser!.fullName}',
+        );
+        await _firestore.collection('transactions').doc(txRef.id).set(tx.toMap());
+      } catch (e) {
+        debugPrint("WARNING: Failed to log transfer_in transaction: $e");
+      }
+
+      return true;
+    } else {
+      // Mock transfer
+      final newBalance = _currentUser!.balance - amount;
+      final tx = TransactionModel(
+        id: 'tx_mock_${DateTime.now().millisecondsSinceEpoch}',
+        userId: _currentUser!.uid,
+        type: 'transfer_out',
+        amount: amount,
+        status: 'completed',
+        timestamp: DateTime.now(),
+        note: 'Chuyển coin cho $receiverName',
+      );
+      _mockTransactions.add(tx);
+      _transactions.insert(0, tx);
+      _currentUser = _currentUser!.copyWith(balance: newBalance);
+      notifyListeners();
+      return true;
+    }
+  }
+
   double getRebatePercentage(int vipLevel) {
     switch (vipLevel) {
       case 0: return 0.002; // 0.2%
@@ -728,6 +800,62 @@ class AuthService with ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> claimCheckIn() async {
+    if (_currentUser == null) return;
+    final now = DateTime.now();
+
+    // Check locally first to save API calls
+    if (_currentUser!.lastCheckInTime != null) {
+      final diff = now.difference(_currentUser!.lastCheckInTime!);
+      if (diff.inHours < 5) {
+        final hoursLeft = 5 - diff.inHours;
+        final minutesLeft = 60 - (diff.inMinutes % 60);
+        throw Exception("Vui lòng đợi thêm $hoursLeft giờ $minutesLeft phút để tiếp tục điểm danh.");
+      }
+    }
+
+    if (isFirebaseActive) {
+      try {
+        await _userRepo.claimCheckInAtomic(_currentUser!.uid, 5000.0, now);
+        
+        final txRef = _firestore.collection('transactions').doc();
+        final tx = TransactionModel(
+          id: txRef.id,
+          userId: _currentUser!.uid,
+          type: 'promo_bonus',
+          amount: 5000.0,
+          status: 'completed',
+          timestamp: now,
+          note: 'Điểm danh 5 giờ nhận thưởng',
+        );
+        await _firestore.collection('transactions').doc(txRef.id).set(tx.toMap());
+      } catch (e) {
+        debugPrint("Error claiming check-in: $e");
+        rethrow;
+      }
+    } else {
+      // Mock Claim
+      final newBalance = _currentUser!.balance + 5000.0;
+      final tx = TransactionModel(
+        id: 'tx_mock_claim_ci_${DateTime.now().millisecondsSinceEpoch}',
+        userId: _currentUser!.uid,
+        type: 'promo_bonus',
+        amount: 5000.0,
+        status: 'completed',
+        timestamp: now,
+        note: 'Điểm danh 5 giờ nhận thưởng',
+      );
+      _mockTransactions.add(tx);
+      _transactions.insert(0, tx);
+      _currentUser = _currentUser!.copyWith(
+        balance: newBalance,
+        lastCheckInTime: now,
+      );
+      notifyListeners();
+    }
+  }
+
 
   Future<void> updateProfile({String? fullName, String? phoneNumber}) async {
     if (_currentUser == null) return;

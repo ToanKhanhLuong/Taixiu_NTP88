@@ -21,27 +21,48 @@ class _WalletScreenState extends State<WalletScreen> {
     super.dispose();
   }
 
-  void _showTransactionDialog(bool isDeposit) {
+  void _showDepositDialog() {
     _amountController.clear();
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    // Check 1-hour cooldown
+    final lastDeposit = authService.transactions
+        .where((tx) => tx.type == 'deposit')
+        .toList();
+    if (lastDeposit.isNotEmpty) {
+      final lastTime = lastDeposit.first.timestamp;
+      final diff = DateTime.now().difference(lastTime);
+      if (diff.inMinutes < 60) {
+        final remaining = 60 - diff.inMinutes;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Bạn chỉ được nạp 1 lần mỗi giờ. Vui lòng đợi thêm $remaining phút.",
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: AppColors.danger,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+    }
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppColors.cardDark,
-          title: Text(
-            isDeposit ? "NẠP COIN" : "RÚT COIN",
-            style: const TextStyle(color: AppColors.goldAccent, fontWeight: FontWeight.bold),
+          title: const Text(
+            "NẠP COIN",
+            style: TextStyle(color: AppColors.goldAccent, fontWeight: FontWeight.bold),
           ),
           content: Form(
             key: _formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  isDeposit 
-                      ? "Nhập số lượng COIN bạn muốn nạp vào tài khoản Macau Prestige của mình."
-                      : "Nhập số lượng COIN bạn muốn rút từ tài khoản Macau Prestige của mình.",
-                  style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+                const Text(
+                  "Nhập số lượng COIN bạn muốn nạp (tối đa 4000 coin/lần, 1 giờ/lần).",
+                  style: TextStyle(color: AppColors.textGrey, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -49,7 +70,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
-                    hintText: "Số lượng (COIN)",
+                    hintText: "Số lượng (tối đa 4000 COIN)",
                     prefixIcon: Icon(Icons.monetization_on, color: AppColors.goldAccent),
                   ),
                   validator: (value) {
@@ -60,15 +81,30 @@ class _WalletScreenState extends State<WalletScreen> {
                     if (numVal == null || numVal <= 0) {
                       return 'Vui lòng nhập một số dương hợp lệ';
                     }
-                    if (!isDeposit) {
-                      final authService = Provider.of<AuthService>(context, listen: false);
-                      final currentBalance = authService.currentUser?.balance ?? 0.0;
-                      if (numVal > currentBalance) {
-                        return 'Số dư không đủ (${currentBalance.toStringAsFixed(0)} COIN)';
-                      }
+                    if (numVal > 4000) {
+                      return 'Tối đa 4000 COIN mỗi lần nạp';
                     }
                     return null;
                   },
+                ),
+                const SizedBox(height: 12),
+                // Quick amount buttons
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [500, 1000, 2000, 4000].map((amt) {
+                    return ActionChip(
+                      backgroundColor: AppColors.primaryDark,
+                      side: BorderSide(color: Colors.grey[800]!),
+                      label: Text(
+                        "$amt",
+                        style: const TextStyle(color: AppColors.goldAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () {
+                        _amountController.text = amt.toString();
+                      },
+                    );
+                  }).toList(),
                 ),
               ],
             ),
@@ -83,26 +119,19 @@ class _WalletScreenState extends State<WalletScreen> {
                 if (!_formKey.currentState!.validate()) return;
                 
                 final amount = double.parse(_amountController.text.trim());
-                final authService = Provider.of<AuthService>(context, listen: false);
+                final auth = Provider.of<AuthService>(context, listen: false);
                 
                 Navigator.of(context).pop();
                 
-                if (isDeposit) {
-                  await authService.deposit(amount);
-                  _showSuccessSnackBar("Đã nạp thành công ${amount.toStringAsFixed(0)} COIN");
-                } else {
-                  final success = await authService.withdraw(amount);
-                  if (success) {
-                    _showSuccessSnackBar("Đã rút thành công ${amount.toStringAsFixed(0)} COIN");
-                  }
-                }
+                await auth.deposit(amount);
+                _showSuccessSnackBar("Đã nạp thành công ${amount.toStringAsFixed(0)} COIN");
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: isDeposit ? AppColors.success : AppColors.danger,
+                backgroundColor: AppColors.success,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(100, 40),
               ),
-              child: Text(isDeposit ? "NẠP TIỀN" : "RÚT TIỀN"),
+              child: const Text("NẠP TIỀN"),
             ),
           ],
         );
@@ -128,19 +157,21 @@ class _WalletScreenState extends State<WalletScreen> {
       case 'bet_loss': return 'Thua cược';
       case 'promo_bonus': return 'Thưởng nhiệm vụ';
       case 'rebate': return 'Hoàn trả cược';
+      case 'transfer_out': return 'Chuyển coin';
+      case 'transfer_in': return 'Nhận coin';
       default: return 'Giao dịch';
     }
   }
 
   Color _getTxColor(String type) {
-    if (type == 'deposit' || type == 'bet_win' || type == 'promo_bonus' || type == 'rebate') {
+    if (type == 'deposit' || type == 'bet_win' || type == 'promo_bonus' || type == 'rebate' || type == 'transfer_in') {
       return AppColors.success;
     }
     return AppColors.danger;
   }
 
   String _getTxSign(String type) {
-    if (type == 'deposit' || type == 'bet_win' || type == 'promo_bonus' || type == 'rebate') {
+    if (type == 'deposit' || type == 'bet_win' || type == 'promo_bonus' || type == 'rebate' || type == 'transfer_in') {
       return '+';
     }
     return '-';
@@ -153,6 +184,8 @@ class _WalletScreenState extends State<WalletScreen> {
       case 'bet_win': return Icons.emoji_events;
       case 'promo_bonus': return Icons.card_giftcard;
       case 'rebate': return Icons.replay;
+      case 'transfer_out': return Icons.call_made;
+      case 'transfer_in': return Icons.call_received;
       default: return Icons.casino;
     }
   }
@@ -174,7 +207,9 @@ class _WalletScreenState extends State<WalletScreen> {
       tx.type == 'deposit' || 
       tx.type == 'withdraw' || 
       tx.type == 'promo_bonus' || 
-      tx.type == 'rebate'
+      tx.type == 'rebate' ||
+      tx.type == 'transfer_out' ||
+      tx.type == 'transfer_in'
     ).toList();
     final balance = (user?.balance ?? 0.0) - authService.activeBetAmount;
 
@@ -278,45 +313,25 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
           ),
           
-          // Action Buttons: DEPOSIT / WITHDRAW
+          // Action Button: NẠP TIỀN (full width)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showTransactionDialog(true),
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                    label: const Text(
-                      "NẠP TIỀN",
-                      style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showDepositDialog(),
+                icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+                label: const Text(
+                  "NẠP TIỀN",
+                  style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showTransactionDialog(false),
-                    icon: const Icon(Icons.remove_circle_outline, color: Colors.white),
-                    label: const Text(
-                      "RÚT TIỀN",
-                      style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.danger,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-              ],
+              ),
             ),
           ),
           

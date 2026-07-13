@@ -9,6 +9,9 @@ import '../wallet/wallet_screen.dart';
 import '../history/history_screen.dart';
 import '../promos/promos_screen.dart';
 import '../profile/profile_screen.dart';
+import '../profile/friend_list_screen.dart';
+import '../../data/repositories/friend_repository.dart';
+import '../../data/repositories/private_chat_repository.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +21,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final FriendRepository _friendRepo = FriendRepository();
+  final PrivateChatRepository _privateChatRepo = PrivateChatRepository();
   int _currentTabIndex = 0;
 
   void setTabIndex(int index) {
@@ -26,8 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  final List<Widget> _tabs = [
-    const LobbyTab(),
+  late final List<Widget> _tabs = [
+    LobbyTab(onNavigate: setTabIndex),
     const TaiXiuScreen(),
     const WalletScreen(),
     const HistoryScreen(),
@@ -40,16 +45,39 @@ class _HomeScreenState extends State<HomeScreen> {
     final authService = Provider.of<AuthService>(context);
     final user = authService.currentUser;
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentTabIndex,
-        children: _tabs,
-      ),
-      bottomNavigationBar: _buildCustomBottomNavigationBar(user),
+    if (user == null) {
+      return Scaffold(
+        body: IndexedStack(
+          index: _currentTabIndex,
+          children: _tabs,
+        ),
+        bottomNavigationBar: _buildCustomBottomNavigationBar(user, false),
+      );
+    }
+
+    return StreamBuilder<bool>(
+      stream: _friendRepo.streamHasIncomingRequests(user.uid),
+      builder: (context, reqSnapshot) {
+        final hasRequest = reqSnapshot.data ?? false;
+        return StreamBuilder<bool>(
+          stream: _privateChatRepo.streamHasUnreadMessages(user.uid),
+          builder: (context, chatSnapshot) {
+            final hasChat = chatSnapshot.data ?? false;
+            final showProfileBadge = hasRequest || hasChat;
+            return Scaffold(
+              body: IndexedStack(
+                index: _currentTabIndex,
+                children: _tabs,
+              ),
+              bottomNavigationBar: _buildCustomBottomNavigationBar(user, showProfileBadge),
+            );
+          }
+        );
+      }
     );
   }
 
-  Widget _buildCustomBottomNavigationBar(UserModel? user) {
+  Widget _buildCustomBottomNavigationBar(UserModel? user, bool showProfileBadge) {
     bool hasUnclaimed = false;
     if (user != null) {
       hasUnclaimed = user.unclaimedFirstDepositBonus > 0 || 
@@ -77,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildNavBarItem(index: 2, icon: Icons.account_balance_wallet, label: "Ví tiền"),
           _buildNavBarItem(index: 3, icon: Icons.restore, label: "Lịch sử"),
           _buildNavBarItem(index: 4, icon: Icons.card_giftcard, label: "Ưu đãi", showBadge: hasUnclaimed),
-          _buildNavBarItem(index: 5, icon: Icons.person, label: "Cá nhân"),
+          _buildNavBarItem(index: 5, icon: Icons.person, label: "Cá nhân", showBadge: showProfileBadge),
         ],
       ),
     );
@@ -150,7 +178,135 @@ class _HomeScreenState extends State<HomeScreen> {
 // --- Lobby Tab Widget ---
 
 class LobbyTab extends StatelessWidget {
-  const LobbyTab({super.key});
+  final Function(int) onNavigate;
+  const LobbyTab({super.key, required this.onNavigate});
+
+  void _showNotificationSheet(
+    BuildContext context,
+    UserModel? user,
+    List<Map<String, dynamic>> notifications,
+    Function(int) onNavigate,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.primaryDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "THÔNG BÁO MỚI",
+                    style: TextStyle(
+                      color: AppColors.goldAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: AppColors.cardDark, thickness: 1.5, height: 16),
+              if (notifications.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 36),
+                  child: Center(
+                    child: Text(
+                      "Bạn không có thông báo nào mới",
+                      style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                    ),
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: notifications.length,
+                    itemBuilder: (context, index) {
+                      final notif = notifications[index];
+                      IconData iconData = Icons.notifications;
+                      Color iconColor = AppColors.goldAccent;
+                      
+                      if (notif['type'] == 'friend_request') {
+                        iconData = Icons.person_add_alt_1;
+                        iconColor = AppColors.success;
+                      } else if (notif['type'] == 'private_chat') {
+                        iconData = Icons.chat_bubble;
+                        iconColor = AppColors.goldAccent;
+                      } else if (notif['type'] == 'reward') {
+                        iconData = Icons.card_giftcard;
+                        iconColor = const Color(0xFFFFD700);
+                      }
+                      
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardDark,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[850]!, width: 1),
+                        ),
+                        child: ListTile(
+                          onTap: () {
+                            Navigator.pop(context); // Close bottom sheet
+                            if (notif['type'] == 'reward') {
+                              onNavigate(4); // Switch to PromosTab (index 4)
+                            } else if (notif['type'] == 'friend_request') {
+                              onNavigate(5); // Switch to ProfileTab (index 5)
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const FriendListScreen()),
+                              );
+                            } else if (notif['type'] == 'private_chat') {
+                              onNavigate(5); // Switch to ProfileTab (index 5)
+                              final friendUid = notif['payload'] as String;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => FriendListScreen(openChatWithFriendUid: friendUid),
+                                ),
+                              );
+                            }
+                          },
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: iconColor.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(iconData, color: iconColor, size: 20),
+                          ),
+                          title: Text(
+                            notif['title'],
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            notif['body'],
+                            style: const TextStyle(color: AppColors.textGrey, fontSize: 11),
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_ios, color: AppColors.textGrey, size: 14),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,13 +340,37 @@ class LobbyTab extends StatelessWidget {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Không có thông báo mới")),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: PrivateChatRepository().streamAllNotifications(user?.uid ?? '', user),
+            builder: (context, snapshot) {
+              final notifications = snapshot.data ?? [];
+              final hasUnread = notifications.isNotEmpty;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      hasUnread ? Icons.notifications_active : Icons.notifications_none,
+                      color: hasUnread ? AppColors.goldAccent : Colors.white,
+                    ),
+                    onPressed: () => _showNotificationSheet(context, user, notifications, onNavigate),
+                  ),
+                  if (hasUnread)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
               );
-            },
+            }
           )
         ],
       ),

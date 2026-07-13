@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
   final String uid;
   final String fullName;
@@ -14,6 +16,9 @@ class UserModel {
   final double unclaimedFirstDepositBonus;
   final double unclaimedVipLevelRewards;
   final double unclaimedRebate;
+  
+  // Last check-in time
+  final DateTime? lastCheckInTime;
 
   UserModel({
     required this.uid,
@@ -29,6 +34,7 @@ class UserModel {
     this.unclaimedFirstDepositBonus = 0.0,
     this.unclaimedVipLevelRewards = 0.0,
     this.unclaimedRebate = 0.0,
+    this.lastCheckInTime,
   });
 
   static int calculateVipLevel(double totalDeposited) {
@@ -55,6 +61,7 @@ class UserModel {
     double? unclaimedFirstDepositBonus,
     double? unclaimedVipLevelRewards,
     double? unclaimedRebate,
+    DateTime? lastCheckInTime,
   }) {
     final newTotalDeposited = totalDeposited ?? this.totalDeposited;
     return UserModel(
@@ -71,6 +78,7 @@ class UserModel {
       unclaimedFirstDepositBonus: unclaimedFirstDepositBonus ?? this.unclaimedFirstDepositBonus,
       unclaimedVipLevelRewards: unclaimedVipLevelRewards ?? this.unclaimedVipLevelRewards,
       unclaimedRebate: unclaimedRebate ?? this.unclaimedRebate,
+      lastCheckInTime: lastCheckInTime ?? this.lastCheckInTime,
     );
   }
 
@@ -89,11 +97,22 @@ class UserModel {
       'unclaimedFirstDepositBonus': unclaimedFirstDepositBonus,
       'unclaimedVipLevelRewards': unclaimedVipLevelRewards,
       'unclaimedRebate': unclaimedRebate,
+      'lastCheckInTime': lastCheckInTime != null ? Timestamp.fromDate(lastCheckInTime!) : null,
     };
   }
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
     final double totalDepositedVal = (map['totalDeposited'] as num?)?.toDouble() ?? 0.0;
+    
+    DateTime? lastCheckInTimeVal;
+    if (map['lastCheckInTime'] != null) {
+      if (map['lastCheckInTime'] is Timestamp) {
+        lastCheckInTimeVal = (map['lastCheckInTime'] as Timestamp).toDate();
+      } else if (map['lastCheckInTime'] is String) {
+        lastCheckInTimeVal = DateTime.tryParse(map['lastCheckInTime']);
+      }
+    }
+
     return UserModel(
       uid: map['uid'] ?? '',
       fullName: map['fullName'] ?? '',
@@ -108,6 +127,7 @@ class UserModel {
       unclaimedFirstDepositBonus: (map['unclaimedFirstDepositBonus'] as num?)?.toDouble() ?? 0.0,
       unclaimedVipLevelRewards: (map['unclaimedVipLevelRewards'] as num?)?.toDouble() ?? 0.0,
       unclaimedRebate: (map['unclaimedRebate'] as num?)?.toDouble() ?? 0.0,
+      lastCheckInTime: lastCheckInTimeVal,
     );
   }
 }

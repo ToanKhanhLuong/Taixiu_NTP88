@@ -171,11 +171,83 @@ class UserRepository {
     });
   }
 
+  // Điểm danh nhận thưởng nguyên tử (Atomic Check-in)
+  Future<void> claimCheckInAtomic(String uid, double rewardAmount, DateTime checkInTime) async {
+    if (!FirebaseService.isInitialized) return;
+    final docRef = _firestore.collection('users').doc(uid);
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) throw Exception("Không tìm thấy thông tin tài khoản!");
+
+      final data = snapshot.data()!;
+      DateTime? lastTime;
+      if (data['lastCheckInTime'] != null) {
+        if (data['lastCheckInTime'] is Timestamp) {
+          lastTime = (data['lastCheckInTime'] as Timestamp).toDate();
+        } else if (data['lastCheckInTime'] is String) {
+          lastTime = DateTime.tryParse(data['lastCheckInTime']);
+        }
+      }
+
+      if (lastTime != null) {
+        final diff = checkInTime.difference(lastTime);
+        if (diff.inHours < 5) {
+          final hoursLeft = 5 - diff.inHours;
+          final minutesLeft = 60 - (diff.inMinutes % 60);
+          throw Exception("Vui lòng đợi thêm $hoursLeft giờ $minutesLeft phút để tiếp tục điểm danh.");
+        }
+      }
+
+      final double currentBalance = (data['balance'] as num?)?.toDouble() ?? 0.0;
+      
+      transaction.update(docRef, {
+        'balance': currentBalance + rewardAmount,
+        'lastCheckInTime': Timestamp.fromDate(checkInTime),
+      });
+    });
+  }
+
+
   // Cập nhật ảnh đại diện (Avatar)
   Future<void> updateAvatar(String uid, String avatarUrl) async {
     if (!FirebaseService.isInitialized) return;
     await _firestore.collection('users').doc(uid).update({
       'avatarUrl': avatarUrl,
+    });
+  }
+
+  // Chuyển coin giữa hai người dùng (Atomic Transaction)
+  Future<void> transferCoin({
+    required String senderUid,
+    required String receiverUid,
+    required double amount,
+  }) async {
+    if (!FirebaseService.isInitialized) return;
+    if (amount <= 0) throw Exception("Số coin chuyển phải lớn hơn 0!");
+
+    final senderRef = _firestore.collection('users').doc(senderUid);
+    final receiverRef = _firestore.collection('users').doc(receiverUid);
+
+    await _firestore.runTransaction((transaction) async {
+      final senderSnap = await transaction.get(senderRef);
+      final receiverSnap = await transaction.get(receiverRef);
+
+      if (!senderSnap.exists) throw Exception("Không tìm thấy tài khoản người gửi!");
+      if (!receiverSnap.exists) throw Exception("Không tìm thấy tài khoản người nhận!");
+
+      final senderBalance = (senderSnap.data()!['balance'] as num?)?.toDouble() ?? 0.0;
+      if (senderBalance < amount) {
+        throw Exception("Số dư không đủ để chuyển!");
+      }
+
+      transaction.update(senderRef, {
+        'balance': senderBalance - amount,
+      });
+
+      final receiverBalance = (receiverSnap.data()!['balance'] as num?)?.toDouble() ?? 0.0;
+      transaction.update(receiverRef, {
+        'balance': receiverBalance + amount,
+      });
     });
   }
 }
