@@ -902,4 +902,20 @@ class AuthService with ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 500));
     }
   }
+
+  // Gửi email khôi phục mật khẩu từ Firebase
+  Future<void> sendPasswordResetEmail(String email) async {
+    if (isFirebaseActive) {
+      try {
+        await _auth.sendPasswordResetEmail(email: email);
+      } catch (e) {
+        debugPrint("Error sending password reset email: $e");
+        rethrow;
+      }
+    } else {
+      // Mock mode
+      await Future.delayed(const Duration(seconds: 1));
+      debugPrint("Mock: Password reset email sent to $email");
+    }
+  }
 }

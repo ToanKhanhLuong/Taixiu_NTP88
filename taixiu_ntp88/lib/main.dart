@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Macau Prestige',
+      title: 'NTP88',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: const AuthWrapper(),

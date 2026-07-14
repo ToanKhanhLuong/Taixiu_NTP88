@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/constants/app_colors.dart';
 import '../../widgets/custom_textfield.dart';
 import '../../widgets/custom_button.dart';
@@ -51,21 +52,143 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
+      String friendlyError = 'Đăng nhập thất bại. Vui lòng thử lại.';
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'invalid-credential':
+          case 'user-not-found':
+          case 'wrong-password':
+            friendlyError = 'Tài khoản hoặc mật khẩu không chính xác.';
+            break;
+          case 'invalid-email':
+            friendlyError = 'Địa chỉ email không hợp lệ.';
+            break;
+          case 'user-disabled':
+            friendlyError = 'Tài khoản của bạn đã bị khóa.';
+            break;
+          case 'too-many-requests':
+            friendlyError = 'Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.';
+            break;
+          case 'network-request-failed':
+            friendlyError = 'Lỗi kết nối mạng. Vui lòng kiểm tra lại internet.';
+            break;
+          default:
+            friendlyError = e.message ?? e.toString();
+        }
+      } else {
+        friendlyError = e.toString().replaceAll('Exception: ', '');
+      }
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = friendlyError;
       });
     }
   }
 
-  void _showSocialLoginMock(String platform) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.cardDark,
-        content: Text(
-          'Đang kết nối với $platform...',
-          style: const TextStyle(color: AppColors.goldAccent),
-        ),
-        duration: const Duration(seconds: 1),
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isProcessing = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.primaryDark,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.lock_reset, color: AppColors.goldAccent, size: 28),
+                const SizedBox(width: 8),
+                const Text(
+                  "KHÔI PHỤC MẬT KHẨU",
+                  style: TextStyle(
+                    color: AppColors.goldAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
+            ),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Nhập địa chỉ email đăng ký tài khoản của bạn. Chúng tôi sẽ gửi một liên kết đổi mật khẩu của Google đến email này.",
+                    style: TextStyle(color: AppColors.textGrey, fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    controller: emailController,
+                    labelText: "Email đăng ký",
+                    hintText: "Nhập email của bạn...",
+                    prefixIcon: Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (val) {
+                      if (val == null || val.isEmpty) {
+                        return 'Vui lòng nhập email';
+                      }
+                      final emailRegExp = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                      if (!emailRegExp.hasMatch(val)) {
+                        return 'Email không hợp lệ';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isProcessing ? null : () => Navigator.pop(context),
+                child: const Text("HỦY", style: TextStyle(color: AppColors.textGrey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.goldAccent,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                onPressed: isProcessing ? null : () async {
+                  if (!formKey.currentState!.validate()) return;
+                  
+                  setDialogState(() => isProcessing = true);
+                  final email = emailController.text.trim();
+                  
+                  try {
+                    final authService = Provider.of<AuthService>(context, listen: false);
+                    await authService.sendPasswordResetEmail(email);
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Liên kết đặt lại mật khẩu đã gửi đến email $email!"),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    setDialogState(() => isProcessing = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Lỗi gửi email: ${e.toString().replaceAll('Exception: ', '')}"),
+                        backgroundColor: AppColors.danger,
+                      ),
+                    );
+                  }
+                },
+                child: isProcessing
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Text("GỬI YÊU CẦU", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -94,7 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   
                   // Brand Title
                   const Text(
-                    "MACAU PRESTIGE",
+                    "NTP88",
                     style: TextStyle(
                       fontFamily: 'Montserrat',
                       fontSize: 28,
@@ -237,7 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           GestureDetector(
                             onTap: () {
-                              _showSocialLoginMock('Khôi phục mật khẩu');
+                              _showForgotPasswordDialog();
                             },
                             child: const Text(
                               "Quên mật khẩu?",
@@ -287,77 +410,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     text: "VÀO SÒNG BÀI",
                     isLoading: authService.isLoading,
                     onPressed: _handleLogin,
-                  ),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Divider
-                  Row(
-                    children: [
-                      const Expanded(child: Divider(color: AppColors.borderGrey, thickness: 1)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Text(
-                          "HOẶC TIẾP TỤC VỚI",
-                          style: TextStyle(
-                            color: AppColors.textGrey.withOpacity(0.8),
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ),
-                      const Expanded(child: Divider(color: AppColors.borderGrey, thickness: 1)),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Social Login Row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showSocialLoginMock('Facebook'),
-                          icon: const Icon(Icons.facebook, color: Color(0xFF1877F2)),
-                          label: const Text(
-                            "Facebook",
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: AppColors.cardDark,
-                            side: const BorderSide(color: AppColors.borderGrey),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showSocialLoginMock('Google'),
-                          icon: Image.network(
-                            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/24px-Google_%22G%22_logo.svg.png',
-                            height: 18,
-                            errorBuilder: (context, _, __) => const Icon(Icons.g_mobiledata, color: Colors.red),
-                          ),
-                          label: const Text(
-                            "Google",
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: AppColors.cardDark,
-                            side: const BorderSide(color: AppColors.borderGrey),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                   
                   const SizedBox(height: 20),

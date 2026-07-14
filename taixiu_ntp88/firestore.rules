@@ -17,7 +17,7 @@ service cloud.firestore {
     
     // Bảng users: Cho phép người dùng đã đăng nhập đọc thông tin công khai (để tìm kiếm), ghi thông tin của chính mình
     match /users/{userId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       // Cho phép đăng ký tài khoản mới
       allow create: if request.auth != null;
       // Cho phép chủ tài khoản hoặc Admin cập nhật toàn bộ thông tin
@@ -43,7 +43,12 @@ service cloud.firestore {
 
     // Cho phép đọc/ghi tin nhắn chat riêng tư giữa 2 người
     match /private_chats/{roomId} {
-      allow read, write: if request.auth != null && (request.auth.uid in roomId.split('_') || isAdmin());
+      allow read: if request.auth != null && (
+        request.auth.uid in resource.data.get('uids', []) ||
+        request.auth.uid in roomId.split('_') ||
+        isAdmin()
+      );
+      allow write: if request.auth != null && (request.auth.uid in roomId.split('_') || isAdmin());
       
       match /messages/{messageId} {
         allow read, write: if request.auth != null && (request.auth.uid in roomId.split('_') || isAdmin());

@@ -508,7 +508,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: AppColors.cardDark,
         elevation: 0,
         title: const Text(
-          "MACAU PRESTIGE",
+          "NTP88",
           style: TextStyle(
             color: AppColors.goldAccent,
             fontWeight: FontWeight.bold,

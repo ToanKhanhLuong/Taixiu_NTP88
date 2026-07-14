@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/database/firebase_service.dart';
 import '../models/user_model.dart';
@@ -91,14 +92,68 @@ class FriendRepository {
       return controller.stream;
     }
 
-    return _firestore
+    final controller = StreamController<List<UserModel>>();
+    StreamSubscription? friendsSub;
+    final Map<String, StreamSubscription> userSubs = {};
+    final Map<String, UserModel> friendProfiles = {};
+
+    void emitProfiles() {
+      if (controller.isClosed) return;
+      controller.add(friendProfiles.values.toList());
+    }
+
+    friendsSub = _firestore
         .collection('users')
         .doc(uid)
         .collection('friends')
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) => UserModel.fromMap(doc.data())).toList();
+        .listen((friendsSnapshot) {
+      final currentFriendUids = friendsSnapshot.docs.map((d) => d.id).toSet();
+
+      // Clean up subscriptions for removed friends
+      final removedUids = userSubs.keys.where((id) => !currentFriendUids.contains(id)).toList();
+      for (final id in removedUids) {
+        userSubs[id]?.cancel();
+        userSubs.remove(id);
+        friendProfiles.remove(id);
+      }
+
+      if (currentFriendUids.isEmpty) {
+        emitProfiles();
+        return;
+      }
+
+      // Add subscriptions for new friends
+      for (final friendUid in currentFriendUids) {
+        if (!userSubs.containsKey(friendUid)) {
+          final userSub = _firestore
+              .collection('users')
+              .doc(friendUid)
+              .snapshots()
+              .listen((userDoc) {
+            if (userDoc.exists && userDoc.data() != null) {
+              friendProfiles[friendUid] = UserModel.fromMap(userDoc.data()!);
+            }
+            emitProfiles();
+          }, onError: (e) {
+            debugPrint("Error listening to friend $friendUid profile: $e");
+          });
+          userSubs[friendUid] = userSub;
+        }
+      }
+    }, onError: (err) {
+      if (!controller.isClosed) controller.addError(err);
     });
+
+    controller.onCancel = () {
+      friendsSub?.cancel();
+      for (final sub in userSubs.values) {
+        sub.cancel();
+      }
+      controller.close();
+    };
+
+    return controller.stream;
   }
 
   // Stream pending incoming and outgoing requests
@@ -135,6 +190,7 @@ class FriendRepository {
           'username': data['username'],
           'avatarUrl': data['avatarUrl'],
           'idCode': data['idCode'],
+          'vipLevel': data['vipLevel'] ?? 0,
           'type': data['type'],
           'timestamp': (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
         };
@@ -270,6 +326,7 @@ class FriendRepository {
         'username': targetUser.username,
         'avatarUrl': targetUser.avatarUrl,
         'idCode': targetUser.idCode,
+        'vipLevel': targetUser.vipLevel,
         'type': 'sent',
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -280,6 +337,7 @@ class FriendRepository {
         'username': currentUser.username,
         'avatarUrl': currentUser.avatarUrl,
         'idCode': currentUser.idCode,
+        'vipLevel': currentUser.vipLevel,
         'type': 'received',
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -337,6 +395,7 @@ class FriendRepository {
         'username': targetUser.username,
         'avatarUrl': targetUser.avatarUrl,
         'idCode': targetUser.idCode,
+        'vipLevel': targetUser.vipLevel,
         'timestamp': FieldValue.serverTimestamp(),
       });
 
@@ -346,6 +405,7 @@ class FriendRepository {
         'username': currentUser.username,
         'avatarUrl': currentUser.avatarUrl,
         'idCode': currentUser.idCode,
+        'vipLevel': currentUser.vipLevel,
         'timestamp': FieldValue.serverTimestamp(),
       });
 

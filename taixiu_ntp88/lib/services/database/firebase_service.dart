@@ -42,7 +42,7 @@ class FirebaseService {
       _isInitialized = false;
       if (kDebugMode) {
         print("Firebase initialization failed: $e");
-        print("Macau Prestige will run in fallback MOCK mode for demo testing.");
+        print("NTP88 will run in fallback MOCK mode for demo testing.");
       }
     }
   }

@@ -453,6 +453,7 @@ class LobbyTab extends StatelessWidget {
                   icon: Icons.casino,
                   activeColor: AppColors.goldAccent,
                   isLive: true,
+                  backgroundImage: "assets/images/AnhTaixiu.png",
                   onTap: () {
                     // Navigate to the Games tab (index 1)
                     final homeState = context.findAncestorStateOfType<_HomeScreenState>();
@@ -466,6 +467,7 @@ class LobbyTab extends StatelessWidget {
                   icon: Icons.album_outlined,
                   activeColor: AppColors.success,
                   isLive: true,
+                  backgroundImage: "assets/images/Vongquaymayman.jpg",
                   onTap: () {
                     Navigator.push(
                       context,
@@ -542,63 +544,77 @@ class LobbyTab extends StatelessWidget {
     required Color activeColor,
     required bool isLive,
     required VoidCallback onTap,
+    String? backgroundImage,
   }) {
-    return Card(
-      color: AppColors.cardDark,
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: AppColors.borderGrey),
+        border: Border.all(color: AppColors.borderGrey),
+        image: backgroundImage != null
+            ? DecorationImage(
+                image: AssetImage(backgroundImage),
+                fit: BoxFit.cover,
+                colorFilter: ColorFilter.mode(
+                  Colors.black.withAlpha(140),
+                  BlendMode.darken,
+                ),
+              )
+            : null,
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(icon, color: activeColor, size: 32),
-                  if (isLive) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.danger.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        "TRỰC TIẾP",
-                        style: TextStyle(
-                          color: AppColors.danger,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 8,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Icon(icon, color: activeColor, size: 32),
+                    if (isLive) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                      ),
-                    )
-                  ]
-                ],
-              ),
-              const Spacer(),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
+                        child: const Text(
+                          "TRỰC TIẾP",
+                          style: TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 8,
+                          ),
+                        ),
+                      )
+                    ]
+                  ],
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  color: AppColors.textGrey,
-                  fontSize: 11,
+                const Spacer(),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

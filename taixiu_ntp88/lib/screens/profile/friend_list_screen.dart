@@ -618,134 +618,140 @@ class _FriendListScreenState extends State<FriendListScreen> {
         body: TabBarView(
           children: [
             // TAB 1: Friends List
-            StreamBuilder<List<UserModel>>(
-              stream: _friendRepo.streamFriends(currentUser.uid),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.goldAccent));
-                }
-                final friends = snapshot.data ?? [];
-                if (friends.isEmpty) {
-                  return _buildEmptyState(
-                    icon: Icons.people_outline,
-                    title: "Chưa có bạn bè nào",
-                    subtitle: "Tìm kiếm mã ID người chơi khác để kết bạn nhé!",
-                  );
-                }
+            KeepAliveWrapper(
+              child: StreamBuilder<List<UserModel>>(
+                stream: _friendRepo.streamFriends(currentUser.uid),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: AppColors.goldAccent));
+                  }
+                  final friends = snapshot.data ?? [];
+                  if (friends.isEmpty) {
+                    return _buildEmptyState(
+                      icon: Icons.people_outline,
+                      title: "Chưa có bạn bè nào",
+                      subtitle: "Tìm kiếm mã ID người chơi khác để kết bạn nhé!",
+                    );
+                  }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: friends.length,
-                  itemBuilder: (context, index) {
-                    final friend = friends[index];
-                    return _buildFriendCard(context, currentUser, friend);
-                  },
-                );
-              },
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: friends.length,
+                    itemBuilder: (context, index) {
+                      final friend = friends[index];
+                      return _buildFriendCard(context, currentUser, friend);
+                    },
+                  );
+                },
+              ),
             ),
 
             // TAB 2: Friend Requests
-            StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _friendRepo.streamFriendRequests(currentUser.uid),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.goldAccent));
-                }
-                final allRequests = snapshot.data ?? [];
-                final received = allRequests.where((r) => r['type'] == 'received').toList();
-                final sent = allRequests.where((r) => r['type'] == 'sent').toList();
+            KeepAliveWrapper(
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _friendRepo.streamFriendRequests(currentUser.uid),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: AppColors.goldAccent));
+                  }
+                  final allRequests = snapshot.data ?? [];
+                  final received = allRequests.where((r) => r['type'] == 'received').toList();
+                  final sent = allRequests.where((r) => r['type'] == 'sent').toList();
 
-                if (received.isEmpty && sent.isEmpty) {
-                  return _buildEmptyState(
-                    icon: Icons.mail_outline,
-                    title: "Không có lời mời kết bạn",
-                    subtitle: "Danh sách lời mời kết bạn của bạn hiện đang trống.",
+                  if (received.isEmpty && sent.isEmpty) {
+                    return _buildEmptyState(
+                      icon: Icons.mail_outline,
+                      title: "Không có lời mời kết bạn",
+                      subtitle: "Danh sách lời mời kết bạn của bạn hiện đang trống.",
+                    );
+                  }
+
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (received.isNotEmpty) ...[
+                        const Text(
+                          "LỜI MỜI NHẬN ĐƯỢC",
+                          style: TextStyle(color: AppColors.goldAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 8),
+                        ...received.map((req) => _buildRequestCard(context, currentUser, req, isIncoming: true)),
+                        const SizedBox(height: 24),
+                      ],
+                      if (sent.isNotEmpty) ...[
+                        const Text(
+                          "LỜI MỜI ĐÃ GỬI",
+                          style: TextStyle(color: AppColors.textGreyLight, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 8),
+                        ...sent.map((req) => _buildRequestCard(context, currentUser, req, isIncoming: false)),
+                      ],
+                    ],
                   );
-                }
-
-                return ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    if (received.isNotEmpty) ...[
-                      const Text(
-                        "LỜI MỜI NHẬN ĐƯỢC",
-                        style: TextStyle(color: AppColors.goldAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
-                      ...received.map((req) => _buildRequestCard(context, currentUser, req, isIncoming: true)),
-                      const SizedBox(height: 24),
-                    ],
-                    if (sent.isNotEmpty) ...[
-                      const Text(
-                        "LỜI MỜI ĐÃ GỬI",
-                        style: TextStyle(color: AppColors.textGreyLight, fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
-                      ...sent.map((req) => _buildRequestCard(context, currentUser, req, isIncoming: false)),
-                    ],
-                  ],
-                );
-              },
+                },
+              ),
             ),
 
             // TAB 3: Search and Add Friend
-            SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "TÌM KIẾM THEO MÃ ID",
-                    style: TextStyle(
-                      color: AppColors.goldAccent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CustomTextField(
-                          controller: _searchController,
-                          hintText: "Nhập mã ID 9 chữ số (Ví dụ: 999999999)",
-                          prefixIcon: Icons.search_outlined,
-                          keyboardType: TextInputType.number,
-                        ),
+            KeepAliveWrapper(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "TÌM KIẾM THEO MÃ ID",
+                      style: TextStyle(
+                        color: AppColors.goldAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: _handleSearch,
-                        child: Container(
-                          height: 52,
-                          width: 80,
-                          decoration: BoxDecoration(
-                            gradient: AppColors.goldGradient,
-                            borderRadius: BorderRadius.circular(12),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CustomTextField(
+                            controller: _searchController,
+                            hintText: "Nhập mã ID của người cần kết bạn",
+                            prefixIcon: Icons.search_outlined,
+                            keyboardType: TextInputType.number,
                           ),
-                          child: _isSearching
-                              ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)))
-                              : const Center(
-                                  child: Text(
-                                    "TÌM",
-                                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
-                                ),
                         ),
-                      )
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  if (_searchError != null)
-                    Center(
-                      child: Text(
-                        _searchError!,
-                        style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w500),
-                      ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: _handleSearch,
+                          child: Container(
+                            height: 52,
+                            width: 80,
+                            decoration: BoxDecoration(
+                              gradient: AppColors.goldGradient,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _isSearching
+                                ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)))
+                                : const Center(
+                                    child: Text(
+                                      "TÌM",
+                                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                  ),
+                          ),
+                        )
+                      ],
                     ),
-                  if (_searchResult != null)
-                    _buildSearchResultCard(currentUser, _searchResult!),
-                ],
+                    const SizedBox(height: 24),
+                    if (_searchError != null)
+                      Center(
+                        child: Text(
+                          _searchError!,
+                          style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    if (_searchResult != null)
+                      _buildSearchResultCard(currentUser, _searchResult!),
+                  ],
+                ),
               ),
             ),
           ],
@@ -799,10 +805,15 @@ class _FriendListScreenState extends State<FriendListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      friend.fullName,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    Flexible(
+                      child: Text(
+                        friend.fullName,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     _buildVipBadge(friend.vipLevel),
@@ -825,6 +836,8 @@ class _FriendListScreenState extends State<FriendListScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   IconButton(
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
                     icon: const Icon(Icons.chat_bubble_outline, color: AppColors.goldAccent, size: 20),
                     onPressed: () {
                       _privateChatRepo.markAsRead(currentUser.uid, friend.uid);
@@ -833,8 +846,8 @@ class _FriendListScreenState extends State<FriendListScreen> {
                   ),
                   if (hasUnread)
                     Positioned(
-                      top: 4,
-                      right: 4,
+                      top: -2,
+                      right: -2,
                       child: Container(
                         width: 8,
                         height: 8,
@@ -848,14 +861,20 @@ class _FriendListScreenState extends State<FriendListScreen> {
               );
             }
           ),
+          const SizedBox(width: 4),
           // Transfer Coin Button
           IconButton(
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(),
             icon: const Icon(Icons.monetization_on_outlined, color: AppColors.success, size: 20),
             tooltip: 'Chuyển coin',
             onPressed: () => _showTransferCoinDialog(context, currentUser, friend),
           ),
+          const SizedBox(width: 4),
           // Unfriend Button
           IconButton(
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(),
             icon: const Icon(Icons.person_remove_outlined, color: AppColors.danger, size: 20),
             onPressed: () {
               showDialog(
@@ -926,14 +945,19 @@ class _FriendListScreenState extends State<FriendListScreen> {
           if (isIncoming) ...[
             // Decline Button
             IconButton(
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(),
               icon: const Icon(Icons.close, color: AppColors.danger, size: 22),
               onPressed: () async {
                 await _friendRepo.declineFriendRequest(currentUser.uid, targetUid);
                 _showFeedback("Đã từ chối lời mời kết bạn từ $fullName", AppColors.info);
               },
             ),
+            const SizedBox(width: 4),
             // Accept Button
             IconButton(
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(),
               icon: const Icon(Icons.check, color: AppColors.success, size: 22),
               onPressed: () async {
                 final targetUser = UserModel(
@@ -1096,3 +1120,23 @@ class _FriendListScreenState extends State<FriendListScreen> {
     );
   }
 }
+
+class KeepAliveWrapper extends StatefulWidget {
+  final Widget child;
+  const KeepAliveWrapper({super.key, required this.child});
+
+  @override
+  State<KeepAliveWrapper> createState() => _KeepAliveWrapperState();
+}
+
+class _KeepAliveWrapperState extends State<KeepAliveWrapper> with AutomaticKeepAliveClientMixin {
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+
+  @override
+  bool get wantKeepAlive => true;
+}
+

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/constants/app_colors.dart';
 import '../../widgets/custom_textfield.dart';
 import '../../widgets/custom_button.dart';
@@ -71,8 +72,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } catch (e) {
+      String friendlyError = 'Đăng ký thất bại. Vui lòng thử lại.';
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'email-already-in-use':
+            friendlyError = 'Địa chỉ email này đã được đăng ký cho tài khoản khác.';
+            break;
+          case 'invalid-email':
+            friendlyError = 'Địa chỉ email không hợp lệ.';
+            break;
+          case 'operation-not-allowed':
+            friendlyError = 'Đăng ký tài khoản hiện đang tạm khóa.';
+            break;
+          case 'weak-password':
+            friendlyError = 'Mật khẩu quá yếu. Vui lòng sử dụng tối thiểu 6 ký tự.';
+            break;
+          case 'network-request-failed':
+            friendlyError = 'Lỗi kết nối mạng. Vui lòng kiểm tra lại internet.';
+            break;
+          default:
+            friendlyError = e.message ?? e.toString();
+        }
+      } else {
+        friendlyError = e.toString().replaceAll('Exception: ', '');
+      }
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = friendlyError;
       });
     }
   }
@@ -101,7 +126,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   
                   // Brand Title
                   const Text(
-                    "MACAU PRESTIGE",
+                    "NTP88",
                     style: TextStyle(
                       fontFamily: 'Montserrat',
                       fontSize: 28,
