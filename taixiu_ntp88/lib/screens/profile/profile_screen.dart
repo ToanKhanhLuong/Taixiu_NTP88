@@ -288,6 +288,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // 4. POPUP: Đổi Mật Khẩu
   void _showChangePassword(BuildContext context, AuthService authService) {
+    final currentPasswordController = TextEditingController();
     final passwordController = TextEditingController();
     final confirmController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -309,6 +310,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    TextFormField(
+                      controller: currentPasswordController,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: "Mật khẩu hiện tại",
+                        labelStyle: TextStyle(color: AppColors.textGrey),
+                      ),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Mật khẩu hiện tại không được để trống';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: passwordController,
                       obscureText: true,
@@ -361,7 +376,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       });
 
                       try {
-                        await authService.changePassword(passwordController.text);
+                        await authService.changePassword(
+                          currentPasswordController.text,
+                          passwordController.text,
+                        );
                         if (context.mounted) {
                           Navigator.of(context).pop();
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -375,10 +393,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         setStateDialog(() {
                           isLoading = false;
                         });
+                        String errorMessage = "Đã xảy ra lỗi. Vui lòng thử lại!";
+                        final errStr = e.toString().toLowerCase();
+                        if (errStr.contains('invalid-credential') || 
+                            errStr.contains('wrong-password') || 
+                            errStr.contains('invalid_credential')) {
+                          errorMessage = "Mật khẩu hiện tại không chính xác!";
+                        } else if (errStr.contains('weak-password')) {
+                          errorMessage = "Mật khẩu mới quá yếu (phải chứa ít nhất 6 ký tự)!";
+                        } else if (errStr.contains('requires-recent-login')) {
+                          errorMessage = "Phiên làm việc hết hạn. Vui lòng đăng xuất và đăng nhập lại!";
+                        } else {
+                          errorMessage = e.toString().replaceAll('Exception: ', '');
+                        }
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text("Lỗi: ${e.toString().replaceAll('Exception: ', '')}"),
+                              content: Text("Lỗi: $errorMessage"),
                               backgroundColor: AppColors.danger,
                             ),
                           );
@@ -389,7 +420,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       backgroundColor: AppColors.goldAccent,
                       foregroundColor: Colors.black,
                     ),
-                    child: const Text("ĐỒI"),
+                    child: const Text("ĐỔI"),
                   ),
                 ]
               ],

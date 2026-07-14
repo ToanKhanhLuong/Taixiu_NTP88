@@ -890,10 +890,18 @@ class AuthService with ChangeNotifier {
   }
 
   // Đổi mật khẩu tài khoản qua Firebase Auth
-  Future<void> changePassword(String newPassword) async {
+  Future<void> changePassword(String currentPassword, String newPassword) async {
     if (isFirebaseActive) {
       final User? user = _auth.currentUser;
-      if (user != null) {
+      if (user != null && user.email != null) {
+        // Xác thực lại tài khoản trước
+        final AuthCredential credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: currentPassword,
+        );
+        await user.reauthenticateWithCredential(credential);
+        
+        // Cập nhật mật khẩu mới
         await user.updatePassword(newPassword);
       } else {
         throw Exception("Người dùng chưa đăng nhập hệ thống.");
